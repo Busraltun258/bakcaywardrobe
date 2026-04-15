@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /profiles/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /clothes/{itemId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /outfitRequests/{rid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+    }
+
+    match /outfitSuggestions/{sid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+    }
+
+    match /suggestionComments/{cid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+
+    match /usernames/{docId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/{sub=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
