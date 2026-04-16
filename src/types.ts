@@ -27,6 +27,7 @@ export type OutfitLiked = 'yes' | 'no' | null
 export interface OutfitSuggestion {
   id: string
   requestId: string
+  requesterUid?: string
   advisorUid: string
   clothingItemIds: string[]
   advisorNote: string

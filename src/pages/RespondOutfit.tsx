@@ -85,6 +85,7 @@ const RespondOutfit: React.FC = () => {
     try {
       await addDoc(collection(db, 'outfitSuggestions'), {
         requestId: req.id,
+        requesterUid: req.fromUid,
         advisorUid: user.uid,
         clothingItemIds: Array.from(selected),
         advisorNote: note.trim(),

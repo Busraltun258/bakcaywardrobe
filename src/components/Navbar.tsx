@@ -1,11 +1,31 @@
-import React from 'react'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import React, { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase'
 
 const Navbar: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin } = useAuth()
+  const [badge, setBadge] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    if (isAdmin) {
+      // Admin: bekleyen talep sayısı
+      const q = query(collection(db, 'outfitRequests'), where('status', '==', 'pending'))
+      return onSnapshot(q, (snap) => setBadge(snap.size))
+    } else {
+      // User: henüz geri bildirim verilmemiş öneri sayısı
+      const q = query(
+        collection(db, 'outfitSuggestions'),
+        where('requesterUid', '==', user.uid),
+        where('liked', '==', null)
+      )
+      return onSnapshot(q, (snap) => setBadge(snap.size))
+    }
+  }, [user, isAdmin])
 
   const handleLogout = async () => {
     try {
@@ -30,9 +50,11 @@ const Navbar: React.FC = () => {
             style={{
               ...styles.link,
               ...(location.pathname === '/home' ? styles.activeLink : {}),
+              position: 'relative' as const,
             }}
           >
             Ana Sayfa
+            {badge > 0 && <span style={styles.badge}>{badge}</span>}
           </button>
         ) : (
           <>
@@ -52,9 +74,11 @@ const Navbar: React.FC = () => {
               style={{
                 ...styles.link,
                 ...(location.pathname.startsWith('/kombin') ? styles.activeLink : {}),
+                position: 'relative' as const,
               }}
             >
               Kombin
+              {badge > 0 && <span style={styles.badge}>{badge}</span>}
             </button>
           </>
         )}
@@ -112,6 +136,23 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '20px',
     cursor: 'pointer',
     fontSize: '13px',
+  },
+  badge: {
+    position: 'absolute' as const,
+    top: -6,
+    right: -6,
+    background: '#ef4444',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 700,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 4px',
+    lineHeight: 1,
   },
 }
 

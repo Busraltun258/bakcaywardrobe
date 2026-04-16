@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
@@ -149,13 +149,30 @@ const AdminHome: React.FC = () => {
                 </div>
                 <p style={styles.time}>📅 {time}</p>
                 {r.note ? <p style={{ fontSize: 14, color: '#ccc', margin: '6px 0 0' }}><strong>Not:</strong> {r.note}</p> : null}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/kombin/yanit/${r.id}`)}
-                  style={styles.respondBtn}
-                >
-                  👗 Öneri Hazırla
-                </button>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/kombin/yanit/${r.id}`)}
+                    style={styles.respondBtn}
+                  >
+                    👗 Öneri Hazırla
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.btnDeleteReq}
+                    onClick={async () => {
+                      if (!confirm('Bu talebi silmek istediğine emin misin?')) return
+                      try {
+                        await deleteDoc(doc(db, 'outfitRequests', r.id))
+                      } catch (e) {
+                        console.error(e)
+                        alert('Silinemedi.')
+                      }
+                    }}
+                  >
+                    🗑️ Talebi Sil
+                  </button>
+                </div>
               </div>
             )
           })
@@ -221,6 +238,21 @@ const AdminHome: React.FC = () => {
                 ) : (
                   <p style={styles.smallMuted}>İstek yükleniyor…</p>
                 )}
+                <button
+                  type="button"
+                  style={styles.btnDeleteSugg}
+                  onClick={async () => {
+                    if (!confirm('Bu kombin önerisini silmek istediğine emin misin?')) return
+                    try {
+                      await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                    } catch (e) {
+                      console.error(e)
+                      alert('Silinemedi.')
+                    }
+                  }}
+                >
+                  🗑️ Öneriyi Sil
+                </button>
               </div>
             )
           })
@@ -290,6 +322,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
     fontSize: 14,
+  },
+  btnDeleteReq: {
+    padding: '10px 18px',
+    background: 'rgba(239,68,68,0.12)',
+    border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 10,
+    cursor: 'pointer',
+    fontSize: 14,
+    color: '#f87171',
+  },
+  btnDeleteSugg: {
+    marginTop: 10,
+    padding: '8px 14px',
+    background: 'rgba(239,68,68,0.12)',
+    border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 13,
+    color: '#f87171',
+    width: '100%',
   },
 }
 

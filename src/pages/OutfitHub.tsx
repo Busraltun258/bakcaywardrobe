@@ -1,24 +1,24 @@
 import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  updateDoc,
-  where,
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    onSnapshot,
+    query,
+    updateDoc,
+    where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import {
-  ClothingItem,
-  OutfitRequest,
-  OutfitSuggestion,
-  UserProfile,
+    ClothingItem,
+    OutfitRequest,
+    OutfitSuggestion,
+    UserProfile,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 
@@ -28,7 +28,6 @@ const OutfitHub: React.FC = () => {
   const [fromMe, setFromMe] = useState<OutfitRequest[]>([])
   const [toMe, setToMe] = useState<OutfitRequest[]>([])
   const [allSuggestions, setAllSuggestions] = useState<OutfitSuggestion[]>([])
-  const [clothesCache, setClothesCache] = useState<Record<string, ClothingItem>>({})
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -88,31 +87,10 @@ const OutfitHub: React.FC = () => {
     profiles.find((p) => p.id === uid)?.username ??
     uid.slice(0, 6)
 
-  const incomingPending = useMemo(
-    () => requests.filter((r) => r.toUid === user?.uid && r.status === 'pending'),
-    [requests, user]
-  )
   const myOutgoing = useMemo(
     () => requests.filter((r) => r.fromUid === user?.uid),
     [requests, user]
   )
-
-  const loadClothesForSuggestion = async (ids: string[]) => {
-    const need = ids.filter((id) => !clothesCache[id])
-    if (!need.length) return
-    const entries = await Promise.all(
-      need.map(async (id) => {
-        const s = await getDoc(doc(db, 'clothes', id))
-        if (!s.exists) return null
-        return { id: s.id, ...s.data() } as ClothingItem
-      })
-    )
-    const next = { ...clothesCache }
-    entries.forEach((c) => {
-      if (c) next[c.id] = c
-    })
-    setClothesCache(next)
-  }
 
   // Admin kullanıcıyı bul (isAdmin: true veya bilinen admin email)
   const ADMIN_EMAILS = ['altunbusra32@gmail.com', 'busra@dolap.com']
@@ -198,27 +176,6 @@ const OutfitHub: React.FC = () => {
         </section>
 
         <section style={styles.card}>
-          <h3 style={styles.h3}>Bana gelen (yanıt bekleyen)</h3>
-          {incomingPending.length === 0 ? (
-            <p style={styles.muted}>Bekleyen istek yok.</p>
-          ) : (
-            <ul style={styles.list}>
-              {incomingPending.map((r) => (
-                <li key={r.id} style={styles.li}>
-                  <span>
-                    <strong>{profileName(r.fromUid)}</strong> senin için kombin istiyor (dolap:{' '}
-                    {profileName(r.wardrobeOwnerUid)}).
-                  </span>
-                  <Link to={`/kombin/yanit/${r.id}`} style={styles.link}>
-                    Öneri hazırla →
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section style={styles.card}>
           <h3 style={styles.h3}>Gönderdiğim istekler & öneriler</h3>
           {myOutgoing.length === 0 ? (
             <p style={styles.muted}>Henüz istek yok.</p>
@@ -227,10 +184,29 @@ const OutfitHub: React.FC = () => {
               const suggs = suggestions.filter((s) => s.requestId === r.id)
               return (
                 <div key={r.id} style={styles.block}>
-                  <p style={styles.reqLine}>
-                    → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
-                    {r.note ? ` · “${r.note}”` : ''}
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p style={styles.reqLine}>
+                      → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
+                      {r.note ? ` · "${r.note}"` : ''}
+                    </p>
+                    <button
+                      type="button"
+                      style={styles.btnDeleteSugg}
+                      onClick={async () => {
+                        if (!confirm('Bu talebi silmek istediğine emin misin?')) return
+                        try {
+                          const relatedSuggs = allSuggestions.filter((sg) => sg.requestId === r.id)
+                          await Promise.all(relatedSuggs.map((sg) => deleteDoc(doc(db, 'outfitSuggestions', sg.id))))
+                          await deleteDoc(doc(db, 'outfitRequests', r.id))
+                        } catch (e) {
+                          console.error(e)
+                          alert('Silinemedi.')
+                        }
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
                   {suggs.length === 0 && r.status === 'pending' ? (
                     <p style={styles.muted}>Öneri henüz yok.</p>
                   ) : null}
@@ -240,9 +216,16 @@ const OutfitHub: React.FC = () => {
                       s={s}
                       itemIdsKey={[...s.clothingItemIds].sort().join('|')}
                       profileName={profileName}
-                      onLoadItems={() => loadClothesForSuggestion(s.clothingItemIds)}
-                      clothesCache={clothesCache}
                       onSave={saveFeedback}
+                      onDelete={async () => {
+                        if (!confirm('Bu kombin önerisini silmek istediğine emin misin?')) return
+                        try {
+                          await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                        } catch (e) {
+                          console.error(e)
+                          alert('Silinemedi.')
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -259,12 +242,12 @@ const SuggestionFeedback: React.FC<{
   s: OutfitSuggestion
   itemIdsKey: string
   profileName: (uid: string) => string
-  onLoadItems: () => void
-  clothesCache: Record<string, ClothingItem>
   onSave: (s: OutfitSuggestion, liked: 'yes' | 'no' | null | undefined, comment: string) => void
-}> = ({ s, itemIdsKey, profileName, onLoadItems, clothesCache, onSave }) => {
+  onDelete: () => void
+}> = ({ s, itemIdsKey, profileName, onSave, onDelete }) => {
   const [comment, setComment] = useState(s.comment ?? '')
   const [liked, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
+  const [items, setItems] = useState<Record<string, ClothingItem>>({})
 
   useEffect(() => {
     setComment(s.comment ?? '')
@@ -272,8 +255,22 @@ const SuggestionFeedback: React.FC<{
   }, [s.id, s.comment, s.liked])
 
   useEffect(() => {
-    onLoadItems()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- üst bileşenden gelen callback her render'da yenilenir
+    let cancelled = false
+    const load = async () => {
+      const results = await Promise.all(
+        s.clothingItemIds.map(async (id) => {
+          const snap = await getDoc(doc(db, 'clothes', id))
+          if (!snap.exists()) return null
+          return { id: snap.id, ...snap.data() } as ClothingItem
+        })
+      )
+      if (cancelled) return
+      const map: Record<string, ClothingItem> = {}
+      results.forEach((c) => { if (c) map[c.id] = c })
+      setItems(map)
+    }
+    load()
+    return () => { cancelled = true }
   }, [s.id, itemIdsKey])
 
   return (
@@ -284,7 +281,7 @@ const SuggestionFeedback: React.FC<{
       </p>
       <div style={styles.prevRow}>
         {s.clothingItemIds.map((id) => {
-          const c = clothesCache[id]
+          const c = items[id]
           return c ? (
             <img key={id} src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
           ) : (
@@ -321,9 +318,14 @@ const SuggestionFeedback: React.FC<{
         style={styles.textareaSmall}
         rows={2}
       />
-      <button type="button" style={styles.btnGhost} onClick={() => onSave(s, undefined, comment)}>
-        Yorumu kaydet
-      </button>
+      <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+        <button type="button" style={styles.btnGhost} onClick={() => onSave(s, undefined, comment)}>
+          Yorumu kaydet
+        </button>
+        <button type="button" style={styles.btnDeleteSugg} onClick={onDelete}>
+          🗑️ Öneriyi Sil
+        </button>
+      </div>
     </div>
   )
 }
@@ -383,8 +385,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   btnGhost: {
-    marginTop: 6,
-    padding: '8px 12px',
+    padding: '8px 14px',
     background: 'rgba(255,255,255,0.08)',
     border: 'none',
     borderRadius: 8,
@@ -414,9 +415,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   suggMeta: { fontSize: 13, margin: '0 0 8px', color: '#aaa' },
   prevRow: { display: 'flex', gap: 6, flexWrap: 'wrap' },
-  thumb: { width: 72, height: 72, objectFit: 'cover', borderRadius: 8 },
-  thumbPlaceholder: { width: 72, height: 72, background: '#2a2a3a', borderRadius: 8 },
-  feedRow: { display: 'flex', gap: 8, marginTop: 10 },
+  thumb: { width: 68, height: 68, objectFit: 'cover', borderRadius: 8, flexShrink: 0 },
+  thumbPlaceholder: { width: 68, height: 68, background: '#2a2a3a', borderRadius: 8, flexShrink: 0 },
+  feedRow: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' },
   pill: {
     padding: '8px 14px',
     borderRadius: 20,
@@ -429,6 +430,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
   },
   pillOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.2)', color: '#fff' },
+  btnDeleteReq: {
+    background: 'rgba(239,68,68,0.12)',
+    border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 8,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    fontSize: 14,
+    color: '#f87171',
+    flexShrink: 0,
+  },
+  btnDeleteSugg: {
+    padding: '8px 14px',
+    background: 'rgba(239,68,68,0.12)',
+    border: '1px solid rgba(239,68,68,0.25)',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 13,
+    color: '#f87171',
+  },
 }
 
 export default OutfitHub
