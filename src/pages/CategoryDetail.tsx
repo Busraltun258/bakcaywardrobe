@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react'
+import {
+    collection,
+    deleteDoc,
+    doc,
+    onSnapshot,
+    query,
+    updateDoc,
+    where,
+} from 'firebase/firestore'
+import React, { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
-import { CATEGORIES, ClothingItem, MAX_CLOTHES_TOTAL } from '../types'
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  deleteDoc,
-  updateDoc,
-  doc,
-} from 'firebase/firestore'
+import { db } from '../firebase'
+import { CATEGORIES, ClothingItem } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { summarizeBatchUpload, uploadClothesBatch } from '../utils/uploadClothesBatch'
-import { db } from '../firebase'
 
 const CategoryDetail: React.FC = () => {
   const { user } = useAuth()
