@@ -189,23 +189,7 @@ const OutfitHub: React.FC = () => {
                       → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
                       {r.note ? ` · "${r.note}"` : ''}
                     </p>
-                    <button
-                      type="button"
-                      style={styles.btnDeleteSugg}
-                      onClick={async () => {
-                        if (!confirm('Bu talebi silmek istediğine emin misin?')) return
-                        try {
-                          const relatedSuggs = allSuggestions.filter((sg) => sg.requestId === r.id)
-                          await Promise.all(relatedSuggs.map((sg) => deleteDoc(doc(db, 'outfitSuggestions', sg.id))))
-                          await deleteDoc(doc(db, 'outfitRequests', r.id))
-                        } catch (e) {
-                          console.error(e)
-                          alert('Silinemedi.')
-                        }
-                      }}
-                    >
-                      🗑️
-                    </button>
+
                   </div>
                   {suggs.length === 0 && r.status === 'pending' ? (
                     <p style={styles.muted}>Öneri henüz yok.</p>
