@@ -101,15 +101,15 @@ const CategoryDetail: React.FC = () => {
           <div style={st.grid}>
             {items.map((item) => (
               <div key={item.id} style={st.card}>
-                <img src={clothingItemImageSrc(item)} alt="" style={st.image} />
+                <img src={clothingItemImageSrc(item)} alt="" style={st.image} loading="lazy" decoding="async" />
                 <div style={st.cardOverlay}>
                   {editingId === item.id ? (
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' }}>
                       <input type="text" value={editLabel} onChange={(e) => setEditLabel(e.target.value)}
                         placeholder="ör. Baggy jean" autoFocus onKeyDown={(e) => e.key === 'Enter' && saveLabel(item)}
-                        style={{ flex: 1, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', padding: '5px 8px', fontSize: 12, outline: 'none' }} />
-                      <button type="button" onClick={() => saveLabel(item)} style={{ background: '#22c55e', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✓</button>
-                      <button type="button" onClick={() => setEditingId(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}>✕</button>
+                        style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', padding: '5px 8px', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                      <button type="button" onClick={() => saveLabel(item)} style={{ flexShrink: 0, background: '#22c55e', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12, minWidth: 28 }}>✓</button>
+                      <button type="button" onClick={() => setEditingId(null)} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12, minWidth: 28 }}>✕</button>
                     </div>
                   ) : (
                     <button type="button" onClick={() => startEdit(item)} style={st.labelBtn}>
@@ -139,7 +139,7 @@ const st: Record<string, React.CSSProperties> = {
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '60px 0' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 },
   card: { position: 'relative', borderRadius: 14, overflow: 'hidden', background: '#1a1a24', aspectRatio: '1' },
-  image: { width: '100%', height: '100%', objectFit: 'cover' },
+  image: { width: '100%', height: '100%', objectFit: 'cover', background: '#2a2a35' },
   cardOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.75))', padding: '24px 8px 8px' },
   labelBtn: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 12, cursor: 'pointer', padding: '2px 0', textAlign: 'left', width: '100%' },
   deleteBtn: { position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },

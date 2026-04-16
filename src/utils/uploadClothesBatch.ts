@@ -1,7 +1,7 @@
 import { addDoc, collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase'
 import { MAX_CLOTHES_TOTAL } from '../types'
 import { compressImageToBase64 } from './imageUtils'
-import { db } from '../firebase'
 
 export type ClothesBatchResult = {
   added: number
@@ -38,8 +38,8 @@ export async function uploadClothesBatch(
   for (let i = 0; i < toProcess.length; i++) {
     const file = toProcess[i]
     try {
-      const imageBase64 = await compressImageToBase64(file, 400, 0.55)
-      if (imageBase64.length > 950_000) {
+      const imageBase64 = await compressImageToBase64(file, 800, 0.75)
+      if (imageBase64.length > 1_500_000) {
         result.skippedOversized++
         continue
       }

@@ -238,21 +238,32 @@ const AdminHome: React.FC = () => {
                 ) : (
                   <p style={styles.smallMuted}>İstek yükleniyor…</p>
                 )}
-                <button
-                  type="button"
-                  style={styles.btnDeleteSugg}
-                  onClick={async () => {
-                    if (!confirm('Bu kombin önerisini silmek istediğine emin misin?')) return
-                    try {
-                      await deleteDoc(doc(db, 'outfitSuggestions', s.id))
-                    } catch (e) {
-                      console.error(e)
-                      alert('Silinemedi.')
-                    }
-                  }}
-                >
-                  🗑️ Öneriyi Sil
-                </button>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  {s.liked === 'no' && (
+                    <button
+                      type="button"
+                      style={styles.editBtn}
+                      onClick={() => navigate(`/kombin/duzenle/${s.id}`)}
+                    >
+                      ✏️ Düzenle
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    style={styles.btnDeleteSugg}
+                    onClick={async () => {
+                      if (!confirm('Bu kombin önerisini silmek istediğine emin misin?')) return
+                      try {
+                        await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                      } catch (e) {
+                        console.error(e)
+                        alert('Silinemedi.')
+                      }
+                    }}
+                  >
+                    🗑️ Sil
+                  </button>
+                </div>
               </div>
             )
           })
@@ -332,8 +343,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     color: '#f87171',
   },
+  editBtn: {
+    padding: '8px 14px',
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: 600,
+    flex: 1,
+  },
   btnDeleteSugg: {
-    marginTop: 10,
     padding: '8px 14px',
     background: 'rgba(239,68,68,0.12)',
     border: '1px solid rgba(239,68,68,0.25)',
@@ -341,7 +362,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontSize: 13,
     color: '#f87171',
-    width: '100%',
+    flex: 1,
   },
 }
 
