@@ -1,5 +1,3 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   addDoc,
   collection,
@@ -11,8 +9,11 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase'
 import {
   ClothingItem,
   OutfitRequest,
@@ -20,7 +21,6 @@ import {
   UserProfile,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
-import { db } from '../firebase'
 
 const OutfitHub: React.FC = () => {
   const { user } = useAuth()
@@ -29,7 +29,6 @@ const OutfitHub: React.FC = () => {
   const [toMe, setToMe] = useState<OutfitRequest[]>([])
   const [allSuggestions, setAllSuggestions] = useState<OutfitSuggestion[]>([])
   const [clothesCache, setClothesCache] = useState<Record<string, ClothingItem>>({})
-  const [recipientUid, setRecipientUid] = useState('')
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -81,7 +80,7 @@ const OutfitHub: React.FC = () => {
     const ids = new Set(requests.map((r) => r.id))
     return allSuggestions
       .filter((s) => ids.has(s.requestId))
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .sort((a, b) => (b.feedbackAt ?? b.createdAt ?? 0) - (a.feedbackAt ?? a.createdAt ?? 0))
   }, [allSuggestions, requests])
 
   const profileName = (uid: string) =>
@@ -115,20 +114,29 @@ const OutfitHub: React.FC = () => {
     setClothesCache(next)
   }
 
+  // Admin kullanıcıyı bul (isAdmin: true veya bilinen admin email)
+  const ADMIN_EMAILS = ['altunbusra32@gmail.com', 'busra@dolap.com']
+  const adminProfile = useMemo(
+    () =>
+      profiles.find((p) => p.isAdmin === true) ??
+      profiles.find((p) => ADMIN_EMAILS.includes(p.email ?? '')),
+    [profiles]
+  )
+
   const sendRequest = async () => {
-    if (!user || !recipientUid) {
-      alert('Kime göndereceğini seç.')
-      return
-    }
-    if (recipientUid === user.uid) {
-      alert('Kendine istek gönderemezsin.')
+    if (!user) return
+    const adminUid = adminProfile?.id
+    console.log('Admin profile:', adminProfile)
+    console.log('All profiles:', profiles.map(p => ({ id: p.id, email: p.email, isAdmin: p.isAdmin })))
+    if (!adminUid) {
+      alert('Admin kullanıcı bulunamadı. Profiller yükleniyor olabilir, tekrar deneyin.')
       return
     }
     setSending(true)
     try {
       await addDoc(collection(db, 'outfitRequests'), {
         fromUid: user.uid,
-        toUid: recipientUid,
+        toUid: adminUid,
         wardrobeOwnerUid: user.uid,
         note: note.trim(),
         status: 'pending',
@@ -156,13 +164,12 @@ const OutfitHub: React.FC = () => {
       }
       if (liked !== undefined) patch.liked = liked
       await updateDoc(doc(db, 'outfitSuggestions', s.id), patch as Partial<OutfitSuggestion>)
+      alert('✅ Kaydedildi!')
     } catch (e) {
       console.error(e)
       alert('Kaydedilemedi.')
     }
   }
-
-  const others = profiles.filter((p) => p.id !== user?.uid)
 
   return (
     <div style={styles.page}>
@@ -174,19 +181,10 @@ const OutfitHub: React.FC = () => {
         </p>
 
         <section style={styles.card}>
-          <h3 style={styles.h3}>Yeni istek (benim dolabım)</h3>
-          <select
-            value={recipientUid}
-            onChange={(e) => setRecipientUid(e.target.value)}
-            style={styles.select}
-          >
-            <option value="">Kime?</option>
-            {others.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.displayName || p.username || p.email || p.id.slice(0, 8)}
-              </option>
-            ))}
-          </select>
+          <h3 style={styles.h3}>✨ Kombin İsteği Gönder</h3>
+          <p style={{ fontSize: 13, color: '#888', margin: '0 0 10px' }}>
+            Dolabından kombin önerilmesini iste — istek stilistimize iletilecek.
+          </p>
           <textarea
             placeholder="Kısa not (ör. yarın akşam davet var)…"
             value={note}
@@ -195,7 +193,7 @@ const OutfitHub: React.FC = () => {
             rows={2}
           />
           <button type="button" style={styles.btn} onClick={sendRequest} disabled={sending}>
-            {sending ? 'Gönderiliyor…' : 'İstek gönder'}
+            {sending ? 'Gönderiliyor…' : '📩 İstek Gönder'}
           </button>
         </section>
 
@@ -331,23 +329,25 @@ const SuggestionFeedback: React.FC<{
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#f0f2f5' },
+  page: { minHeight: '100vh', background: '#0f0f14' },
   wrap: { maxWidth: 640, margin: '0 auto', padding: 16 },
-  h2: { margin: '8px 0 4px', fontSize: 24 },
-  sub: { color: '#666', fontSize: 14, marginBottom: 16 },
+  h2: { margin: '8px 0 4px', fontSize: 24, color: '#fff' },
+  sub: { color: '#888', fontSize: 14, marginBottom: 16 },
   card: {
-    background: '#fff',
+    background: '#1a1a24',
     borderRadius: 14,
     padding: 16,
     marginBottom: 14,
-    boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
-  h3: { margin: '0 0 12px', fontSize: 16 },
+  h3: { margin: '0 0 12px', fontSize: 16, color: '#e2e2e2' },
   select: {
     width: '100%',
     padding: 10,
     borderRadius: 8,
-    border: '1px solid #ddd',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
     marginBottom: 8,
     fontSize: 14,
   },
@@ -355,7 +355,9 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     padding: 10,
     borderRadius: 8,
-    border: '1px solid #ddd',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
     marginBottom: 8,
     fontSize: 14,
     boxSizing: 'border-box',
@@ -364,14 +366,16 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     padding: 8,
     borderRadius: 8,
-    border: '1px solid #ddd',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
     marginTop: 8,
     fontSize: 13,
     boxSizing: 'border-box',
   },
   btn: {
     padding: '12px 16px',
-    background: '#4f46e5',
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     color: '#fff',
     border: 'none',
     borderRadius: 10,
@@ -381,45 +385,50 @@ const styles: Record<string, React.CSSProperties> = {
   btnGhost: {
     marginTop: 6,
     padding: '8px 12px',
-    background: '#f3f4f6',
+    background: 'rgba(255,255,255,0.08)',
     border: 'none',
     borderRadius: 8,
     cursor: 'pointer',
     fontSize: 13,
+    color: '#ccc',
   },
-  muted: { color: '#999', fontSize: 14 },
+  muted: { color: '#666', fontSize: 14 },
   list: { listStyle: 'none', padding: 0, margin: 0 },
   li: {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
     padding: '12px 0',
-    borderBottom: '1px solid #eee',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
     fontSize: 14,
+    color: '#ccc',
   },
-  link: { color: '#4f46e5', fontWeight: 600 },
-  block: { marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #eee' },
-  reqLine: { fontSize: 14, marginBottom: 8 },
+  link: { color: '#818cf8', fontWeight: 600 },
+  block: { marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' },
+  reqLine: { fontSize: 14, marginBottom: 8, color: '#ccc' },
   sugg: {
-    background: '#f9fafb',
+    background: 'rgba(255,255,255,0.04)',
     borderRadius: 10,
     padding: 12,
     marginTop: 8,
   },
-  suggMeta: { fontSize: 13, margin: '0 0 8px', color: '#444' },
+  suggMeta: { fontSize: 13, margin: '0 0 8px', color: '#aaa' },
   prevRow: { display: 'flex', gap: 6, flexWrap: 'wrap' },
   thumb: { width: 72, height: 72, objectFit: 'cover', borderRadius: 8 },
-  thumbPlaceholder: { width: 72, height: 72, background: '#e5e7eb', borderRadius: 8 },
+  thumbPlaceholder: { width: 72, height: 72, background: '#2a2a3a', borderRadius: 8 },
   feedRow: { display: 'flex', gap: 8, marginTop: 10 },
   pill: {
     padding: '8px 14px',
     borderRadius: 20,
-    border: '1px solid #ccc',
-    background: '#fff',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'rgba(255,255,255,0.15)',
+    background: 'rgba(255,255,255,0.05)',
     cursor: 'pointer',
     fontSize: 13,
+    color: '#ccc',
   },
-  pillOn: { borderColor: '#4f46e5', background: '#eef2ff' },
+  pillOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.2)', color: '#fff' },
 }
 
 export default OutfitHub

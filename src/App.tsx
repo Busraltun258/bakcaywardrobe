@@ -1,22 +1,24 @@
-import { Routes, Route, Navigate, BrowserRouter } from 'react-router-dom'
-import Login from './pages/Login'
-import Home from './pages/Home'
-import Wardrobe from './pages/Wardrobe'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import RequireAuth from './components/RequireAuth'
+import { useAuth } from './context/AuthContext'
+import AdminHome from './pages/AdminHome'
 import CategoryDetail from './pages/CategoryDetail'
+import Login from './pages/Login'
 import OutfitHub from './pages/OutfitHub'
 import RespondOutfit from './pages/RespondOutfit'
-import RequireAuth from './components/RequireAuth'
+import Wardrobe from './pages/Wardrobe'
 
-function App() {
+function AppRoutes() {
+  const { isAdmin } = useAuth()
+
   return (
-    <BrowserRouter>
-      <Routes>
+    <Routes>
       <Route path="/login" element={<Login />} />
       <Route
         path="/home"
         element={
           <RequireAuth>
-            <Home />
+            {isAdmin ? <AdminHome /> : <Navigate to="/wardrobe" replace />}
           </RequireAuth>
         }
       />
@@ -53,7 +55,14 @@ function App() {
         }
       />
       <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+    </Routes>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   )
 }

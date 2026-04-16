@@ -1,53 +1,63 @@
 import React from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const Navbar: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, isAdmin } = useAuth()
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/login', { replace: true })
+    try {
+      await logout()
+    } catch (e) {
+      console.error('Logout hatası:', e)
+    } finally {
+      navigate('/login', { replace: true })
+    }
   }
 
   return (
     <nav style={styles.nav}>
-      <h1 style={styles.logo} onClick={() => navigate('/home')}>
-        👗 Dolabım
+      <h1 style={styles.logo} onClick={() => navigate(isAdmin ? '/home' : '/wardrobe')}>
+        {isAdmin ? '🎨 Admin Panel' : '🧥 Dolabım'}
       </h1>
       <div style={styles.links}>
-        <button
-          type="button"
-          onClick={() => navigate('/home')}
-          style={{
-            ...styles.link,
-            ...(location.pathname === '/home' ? styles.activeLink : {}),
-          }}
-        >
-          Ana Sayfa
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/wardrobe')}
-          style={{
-            ...styles.link,
-            ...(location.pathname.startsWith('/wardrobe') ? styles.activeLink : {}),
-          }}
-        >
-          Dolabım
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/kombin')}
-          style={{
-            ...styles.link,
-            ...(location.pathname.startsWith('/kombin') ? styles.activeLink : {}),
-          }}
-        >
-          Kombin
-        </button>
+        {isAdmin ? (
+          <button
+            type="button"
+            onClick={() => navigate('/home')}
+            style={{
+              ...styles.link,
+              ...(location.pathname === '/home' ? styles.activeLink : {}),
+            }}
+          >
+            Ana Sayfa
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => navigate('/wardrobe')}
+              style={{
+                ...styles.link,
+                ...(location.pathname.startsWith('/wardrobe') ? styles.activeLink : {}),
+              }}
+            >
+              Dolabım
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/kombin')}
+              style={{
+                ...styles.link,
+                ...(location.pathname.startsWith('/kombin') ? styles.activeLink : {}),
+              }}
+            >
+              Kombin
+            </button>
+          </>
+        )}
         <button type="button" onClick={handleLogout} style={styles.logoutBtn}>
           Çıkış
         </button>
@@ -62,11 +72,12 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px 20px',
-    backgroundColor: '#4f46e5',
+    background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
     color: '#fff',
     position: 'sticky',
     top: 0,
     zIndex: 100,
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
   },
   logo: {
     fontSize: '20px',
@@ -81,9 +92,9 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'flex-end',
   },
   link: {
-    background: 'transparent',
-    border: '1px solid rgba(255,255,255,0.3)',
-    color: '#fff',
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    color: '#ccc',
     padding: '6px 14px',
     borderRadius: '20px',
     cursor: 'pointer',

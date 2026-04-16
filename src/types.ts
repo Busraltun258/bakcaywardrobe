@@ -7,6 +7,7 @@ export interface ClothingItem {
   imageBase64?: string
   imageUrl?: string
   userId?: string
+  label?: string
 }
 
 export type OutfitRequestStatus = 'pending' | 'answered' | 'closed'
@@ -41,6 +42,7 @@ export interface UserProfile {
   displayName?: string
   email?: string
   updatedAt?: number
+  isAdmin?: boolean
 }
 
 /** Spark / ücretsiz kullanım için toplam üst sınır */
@@ -52,7 +54,8 @@ export const CATEGORIES = [
   { key: 'kazak', label: 'Kazak', emoji: '🧶' },
   { key: 'ceket', label: 'Ceket', emoji: '🧥' },
   { key: 'gomlek', label: 'Gömlek', emoji: '👔' },
-  { key: 'etek', label: 'Etek', emoji: '👗' },
+  { key: 'mont', label: 'Mont', emoji: '🧥' },
   { key: 'sort', label: 'Şort', emoji: '🩳' },
   { key: 'ayakkabi', label: 'Ayakkabı', emoji: '👟' },
+  { key: 'aksesuar', label: 'Aksesuar', emoji: '⌚' },
 ] as const

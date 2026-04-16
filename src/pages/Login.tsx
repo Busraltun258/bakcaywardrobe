@@ -1,13 +1,13 @@
-import React, { useState } from 'react'
-import { useNavigate, Navigate } from 'react-router-dom'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
-import { useAuth } from '../context/AuthContext'
+import React, { useState } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { defaultDisplayName, resolveLoginEmail } from '../auth/loginMap'
+import { useAuth } from '../context/AuthContext'
 import { auth, db } from '../firebase'
 
 const Login: React.FC = () => {
-  const { user, loading } = useAuth()
+  const { user, loading, isAdmin } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -15,7 +15,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate()
 
   if (!loading && user) {
-    return <Navigate to="/home" replace />
+    return <Navigate to={isAdmin ? '/home' : '/wardrobe'} replace />
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,7 +23,7 @@ const Login: React.FC = () => {
     setError('')
     const email = resolveLoginEmail(username)
     if (!email) {
-      setError('Bilinmeyen kullanıcı adı. kamuran, busra veya altnbusra32 dene; ya tam e-posta yaz.')
+      setError('Bilinmeyen kullanıcı adı. test, busra veya altnbusra32 dene; ya tam e-posta yaz.')
       return
     }
     if (!password) {
@@ -35,17 +35,20 @@ const Login: React.FC = () => {
       const cred = await signInWithEmailAndPassword(auth, email, password)
       const u = cred.user
       const key = username.trim().toLowerCase()
+      const ADMIN_EMAILS = ['altunbusra32@gmail.com', 'busra@dolap.com']
+      const isAdminUser = ADMIN_EMAILS.includes(u.email ?? '')
       await setDoc(
         doc(db, 'profiles', u.uid),
         {
           username: key.includes('@') ? u.email?.split('@')[0] : key,
           displayName: defaultDisplayName(key.includes('@') ? (u.email?.split('@')[0] ?? '') : key),
           email: u.email,
+          isAdmin: isAdminUser,
           updatedAt: Date.now(),
         },
         { merge: true }
       )
-      navigate('/home', { replace: true })
+      navigate(isAdminUser ? '/home' : '/wardrobe', { replace: true })
     } catch (err: unknown) {
       const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : ''
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
@@ -64,14 +67,7 @@ const Login: React.FC = () => {
     <div style={styles.container}>
       <form onSubmit={handleSubmit} style={styles.form}>
         <h2 style={styles.title}>Giriş Yap</h2>
-        <p style={styles.hint}>
-          Örnek: <strong>kamuran</strong> / şifre <strong>1234</strong> —{' '}
-          <strong>altnbusra32</strong> veya <strong>busra</strong> / kendi şifren (Firebase’de tanımlı olmalı).
-        </p>
-        <p style={styles.hintSmall}>
-          Firebase Console → Authentication → E-posta ile:{' '}
-          <code>kamuran@dolabim.app</code>, <code>busra@dolabim.app</code>
-        </p>
+
         <input
           type="text"
           placeholder="Kullanıcı adı veya e-posta"
@@ -106,51 +102,56 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     minHeight: '100vh',
     padding: 16,
+    background: '#0f0f14',
   },
   form: {
     display: 'flex',
     flexDirection: 'column',
     gap: '12px',
     padding: '32px',
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+    backgroundColor: '#1a1a24',
+    borderRadius: '16px',
+    border: '1px solid rgba(255,255,255,0.06)',
     width: '100%',
     maxWidth: 400,
   },
   title: {
     textAlign: 'center',
     marginBottom: 0,
+    color: '#fff',
   },
   hint: {
     fontSize: 13,
-    color: '#555',
+    color: '#999',
     lineHeight: 1.45,
     margin: 0,
   },
   hintSmall: {
     fontSize: 11,
-    color: '#888',
+    color: '#666',
     lineHeight: 1.4,
     margin: 0,
   },
   input: {
     padding: '12px',
-    borderRadius: '8px',
-    border: '1px solid #ddd',
+    borderRadius: '10px',
+    border: '1px solid rgba(255,255,255,0.1)',
     fontSize: '14px',
     outline: 'none',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
   },
   button: {
     padding: '12px',
-    borderRadius: '8px',
+    borderRadius: '10px',
     border: 'none',
-    backgroundColor: '#4f46e5',
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     color: '#fff',
     fontSize: '16px',
     cursor: 'pointer',
+    fontWeight: 600,
   },
-  err: { color: '#b91c1c', fontSize: 13, margin: 0 },
+  err: { color: '#f87171', fontSize: 13, margin: 0 },
 }
 
 export default Login

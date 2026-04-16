@@ -1,23 +1,24 @@
-import React, { useEffect, useState, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
 import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  updateDoc,
+    addDoc,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    updateDoc,
 } from 'firebase/firestore'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase'
 import { CATEGORIES, ClothingItem, OutfitRequest } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
-import { db } from '../firebase'
 
 const RespondOutfit: React.FC = () => {
   const { requestId } = useParams<{ requestId: string }>()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
+  const backPath = isAdmin ? '/home' : '/kombin'
   const [req, setReq] = useState<OutfitRequest | null>(null)
   const [loadErr, setLoadErr] = useState('')
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([])
@@ -35,7 +36,7 @@ const RespondOutfit: React.FC = () => {
         return
       }
       const data = { id: snap.id, ...snap.data() } as OutfitRequest
-      if (data.toUid !== user.uid) {
+      if (!isAdmin && data.toUid !== user.uid) {
         setLoadErr('Bu istek sana ait değil.')
         return
       }
@@ -93,7 +94,7 @@ const RespondOutfit: React.FC = () => {
         feedbackAt: null,
       })
       await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
-      navigate('/kombin', { replace: true })
+      navigate(backPath, { replace: true })
     } catch (e) {
       console.error(e)
       alert('Kaydedilemedi.')
@@ -107,8 +108,8 @@ const RespondOutfit: React.FC = () => {
       <div style={styles.page}>
         <Navbar />
         <p style={styles.center}>{loadErr}</p>
-        <button type="button" style={styles.back} onClick={() => navigate('/kombin')}>
-          Kombinlere dön
+        <button type="button" style={styles.back} onClick={() => navigate(backPath)}>
+          Geri dön
         </button>
       </div>
     )
@@ -189,7 +190,7 @@ const RespondOutfit: React.FC = () => {
         <button type="button" style={styles.primary} onClick={submit} disabled={saving}>
           {saving ? 'Gönderiliyor…' : 'Öneriyi gönder'}
         </button>
-        <button type="button" style={styles.secondary} onClick={() => navigate('/kombin')}>
+        <button type="button" style={styles.secondary} onClick={() => navigate(backPath)}>
           Vazgeç
         </button>
       </div>
@@ -198,21 +199,24 @@ const RespondOutfit: React.FC = () => {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#f0f2f5' },
+  page: { minHeight: '100vh', background: '#0f0f14' },
   wrap: { maxWidth: 640, margin: '0 auto', padding: '16px' },
-  h2: { margin: '8px 0 4px', fontSize: 22 },
-  sub: { color: '#666', fontSize: 14, marginBottom: 12 },
-  note: { background: '#fff', padding: 12, borderRadius: 10, fontSize: 14 },
+  h2: { margin: '8px 0 4px', fontSize: 22, color: '#fff' },
+  sub: { color: '#888', fontSize: 14, marginBottom: 12 },
+  note: { background: '#1a1a24', padding: 12, borderRadius: 10, fontSize: 14, color: '#ccc', border: '1px solid rgba(255,255,255,0.06)' },
   tabs: { display: 'flex', flexWrap: 'wrap', gap: 6, margin: '12px 0' },
   tab: {
-    border: '1px solid #ccc',
-    background: '#fff',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'rgba(255,255,255,0.15)',
+    background: 'rgba(255,255,255,0.05)',
     borderRadius: 20,
     padding: '6px 10px',
     cursor: 'pointer',
     fontSize: 13,
+    color: '#ccc',
   },
-  tabOn: { borderColor: '#4f46e5', background: '#eef2ff' },
+  tabOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.2)', color: '#fff' },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
@@ -224,18 +228,20 @@ const styles: Record<string, React.CSSProperties> = {
     aspectRatio: '1',
     borderRadius: 10,
     overflow: 'hidden',
-    border: '3px solid transparent',
+    borderWidth: 3,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
     padding: 0,
     cursor: 'pointer',
-    background: '#ddd',
+    background: '#1a1a24',
   },
-  cellOn: { borderColor: '#4f46e5' },
+  cellOn: { borderColor: '#818cf8' },
   img: { width: '100%', height: '100%', objectFit: 'cover' },
   check: {
     position: 'absolute',
     top: 4,
     right: 4,
-    background: '#4f46e5',
+    background: '#6366f1',
     color: '#fff',
     width: 24,
     height: 24,
@@ -247,17 +253,19 @@ const styles: Record<string, React.CSSProperties> = {
   textarea: {
     width: '100%',
     borderRadius: 10,
-    border: '1px solid #ddd',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#fff',
     padding: 10,
     fontSize: 14,
     boxSizing: 'border-box',
   },
-  count: { fontSize: 13, color: '#666' },
+  count: { fontSize: 13, color: '#888' },
   primary: {
     width: '100%',
     marginTop: 8,
     padding: 14,
-    background: '#4f46e5',
+    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     color: '#fff',
     border: 'none',
     borderRadius: 12,
@@ -270,12 +278,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 10,
     background: 'transparent',
     border: 'none',
-    color: '#666',
+    color: '#888',
     cursor: 'pointer',
   },
-  center: { textAlign: 'center', padding: 24 },
+  center: { textAlign: 'center', padding: 24, color: '#888' },
   back: { display: 'block', margin: '16px auto', padding: '10px 20px' },
-  empty: { gridColumn: '1 / -1', textAlign: 'center', color: '#999' },
+  empty: { gridColumn: '1 / -1', textAlign: 'center', color: '#666' },
 }
 
 export default RespondOutfit

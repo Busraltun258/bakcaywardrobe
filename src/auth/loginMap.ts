@@ -1,9 +1,10 @@
 /** Kullanıcı adı → Firebase Auth e-postası (Console’da aynı e-postalarla kullanıcı oluştur) */
 export const USERNAME_TO_EMAIL: Record<string, string> = {
-  kamuran: 'kamuran@dolabim.app',
-  busra: 'busra@dolabim.app',
-  altnbusra32: 'busra@dolabim.app',
-  altinbusra32: 'busra@dolabim.app',
+  test: 'test@dolabim.app',
+  busra: 'busra@dolap.com',
+  altnbusra32: 'busra@dolap.com',
+  altinbusra32: 'busra@dolap.com',
+  altunbusra32: 'altunbusra32@gmail.com',
 }
 
 export function resolveLoginEmail(input: string): string | null {
@@ -14,7 +15,7 @@ export function resolveLoginEmail(input: string): string | null {
 
 export function defaultDisplayName(usernameKey: string): string {
   const u = usernameKey.trim().toLowerCase()
-  if (u === 'kamuran') return 'Kamuran'
-  if (u === 'altnbusra32' || u === 'altinbusra32' || u === 'busra') return 'Büşra'
+  if (u === 'test') return 'test'
+  if (u === 'altnbusra32' || u === 'altinbusra32' || u === 'altunbusra32' || u === 'busra') return 'Büşra'
   return usernameKey.trim() || 'Kullanıcı'
 }

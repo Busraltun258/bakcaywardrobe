@@ -1,16 +1,16 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --primary: #7c3aed;
-  --primary-light: #ede9fe;
+  --primary: #6366f1;
+  --primary-light: #1e1b3a;
   --danger: #ef4444;
   --success: #22c55e;
   --warning: #f59e0b;
   --info: #3b82f6;
-  --bg: #f8f7ff;
-  --card: #ffffff;
-  --text: #1e1b4b;
-  --text-muted: #6b7280;
+  --bg: #0f0f14;
+  --card: #1a1a24;
+  --text: #e2e2e2;
+  --text-muted: #888;
   --radius: 16px;
 }
 

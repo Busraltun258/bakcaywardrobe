@@ -10,7 +10,7 @@ const Wardrobe: React.FC = () => {
     <div style={styles.page}>
       <Navbar />
       <div style={styles.container}>
-        <h2 style={styles.title}>👗 Dolabım</h2>
+        <h2 style={styles.title}>🧥 Dolabım</h2>
         <p style={styles.subtitle}>Kıyafetlerini görmek veya eklemek için kategori seç</p>
         <div style={styles.list}>
           {CATEGORIES.map((cat) => (
@@ -31,9 +31,9 @@ const Wardrobe: React.FC = () => {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', backgroundColor: '#f0f2f5' },
+  page: { minHeight: '100vh', background: '#0f0f14' },
   container: { padding: '24px 16px', maxWidth: '600px', margin: '0 auto' },
-  title: { fontSize: '24px', textAlign: 'center', marginBottom: '4px' },
+  title: { fontSize: '24px', textAlign: 'center', marginBottom: '4px', color: '#fff' },
   subtitle: { textAlign: 'center', color: '#888', marginBottom: '20px', fontSize: '14px' },
   list: { display: 'flex', flexDirection: 'column', gap: '10px' },
   item: {
@@ -41,17 +41,16 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '14px',
     padding: '16px 20px',
-    backgroundColor: '#fff',
+    backgroundColor: '#1a1a24',
     borderRadius: '14px',
-    border: 'none',
-    boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+    border: '1px solid rgba(255,255,255,0.06)',
     cursor: 'pointer',
     fontSize: '16px',
     textAlign: 'left',
   },
   emoji: { fontSize: '28px' },
-  label: { flex: 1, fontWeight: 600, color: '#333' },
-  arrow: { fontSize: '22px', color: '#aaa' },
+  label: { flex: 1, fontWeight: 600, color: '#e2e2e2' },
+  arrow: { fontSize: '22px', color: '#555' },
 }
 
 export default Wardrobe
