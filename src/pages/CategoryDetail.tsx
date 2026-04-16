@@ -131,11 +131,11 @@ const CategoryDetail: React.FC = () => {
 
 const st: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#0f0f14' },
-  container: { padding: '20px 16px', maxWidth: 600, margin: '0 auto' },
+  container: { padding: '20px 16px', maxWidth: 600, margin: '0 auto', boxSizing: 'border-box' },
   header: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 },
   title: { margin: 0, fontSize: 22, color: '#fff', fontWeight: 700 },
   count: { margin: 0, fontSize: 13, color: '#888' },
-  uploadBtn: { display: 'block', width: '100%', padding: 14, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', cursor: 'pointer', marginBottom: 20 },
+  uploadBtn: { display: 'block', width: '100%', padding: 14, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', cursor: 'pointer', marginBottom: 20, boxSizing: 'border-box' },
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '60px 0' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 },
   card: { position: 'relative', borderRadius: 14, overflow: 'hidden', background: '#1a1a24', aspectRatio: '1' },
