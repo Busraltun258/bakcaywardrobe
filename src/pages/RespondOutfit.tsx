@@ -174,7 +174,8 @@ const RespondOutfit: React.FC = () => {
                 }}
               >
                 <img src={clothingItemImageSrc(item)} alt="" style={styles.img} />
-                {item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
+                {item.description ? <span style={styles.descTag}>{item.description}</span> : item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
+                {item.description && item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
                 {selected.has(item.id) ? <span style={styles.check}>✓</span> : null}
               </button>
             ))
@@ -240,6 +241,7 @@ const styles: Record<string, React.CSSProperties> = {
   cellOn: { borderColor: '#818cf8' },
   img: { width: '100%', height: '100%', objectFit: 'cover' },
   labelTag: { position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, padding: '3px 6px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+  descTag: { position: 'absolute', bottom: 16, left: 0, right: 0, background: 'rgba(99,102,241,0.75)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
   check: {
     position: 'absolute',
     top: 4,

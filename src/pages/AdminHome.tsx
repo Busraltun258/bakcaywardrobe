@@ -210,7 +210,10 @@ const AdminHome: React.FC = () => {
                   {(s.clothingItemIds ?? []).map((id) => {
                     const c = clothesCache[id]
                     return c ? (
-                      <img key={id} src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
+                      <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 80 }}>
+                        <img src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
+                        {c.description ? <span style={{ fontSize: 10, color: '#aaa', textAlign: 'center', lineHeight: 1.2 }}>{c.description}</span> : null}
+                      </div>
                     ) : (
                       <div key={id} style={styles.thumbPh} />
                     )

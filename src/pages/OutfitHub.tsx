@@ -352,7 +352,7 @@ const SuggestionFeedback: React.FC<{
           return c ? (
             <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 80 }}>
               <img src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
-              {c.description ? <span style={{ fontSize: 10, color: '#aaa', textAlign: 'center', lineHeight: 1.2 }}>{c.description}</span> : null}
+              {(c.description || c.label) ? <span style={{ fontSize: 10, color: '#aaa', textAlign: 'center', lineHeight: 1.2 }}>{c.description || c.label}</span> : null}
             </div>
           ) : (
             <div key={id} style={styles.thumbPlaceholder} />
