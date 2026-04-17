@@ -8,6 +8,7 @@ export interface ClothingItem {
   imageUrl?: string
   userId?: string
   label?: string
+  description?: string
 }
 
 export type OutfitRequestStatus = 'pending' | 'answered' | 'closed'

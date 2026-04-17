@@ -22,6 +22,41 @@ import {
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 
+function weatherCodeToDesc(code: number): string {
+  if (code === 0) return 'Açık'
+  if (code <= 3) return 'Parçalı bulutlu'
+  if (code <= 48) return 'Sisli'
+  if (code <= 57) return 'Çisenti'
+  if (code <= 65) return 'Yağmurlu'
+  if (code <= 67) return 'Dondurucu yağmur'
+  if (code <= 77) return 'Karlı'
+  if (code <= 82) return 'Sağanak'
+  if (code <= 86) return 'Kar yağışı'
+  if (code >= 95) return 'Gök gürültülü fırtına'
+  return 'Bilinmiyor'
+}
+
+function weatherCodeToIcon(code: number): string {
+  if (code === 0) return '☀️'
+  if (code <= 3) return '⛅'
+  if (code <= 48) return '🌫️'
+  if (code <= 57) return '🌦️'
+  if (code <= 65) return '🌧️'
+  if (code <= 67) return '🧊'
+  if (code <= 77) return '❄️'
+  if (code <= 82) return '🌧️'
+  if (code <= 86) return '🌨️'
+  if (code >= 95) return '⛈️'
+  return '🌡️'
+}
+
+interface WeatherData {
+  temp: number
+  description: string
+  icon: string
+  city: string
+}
+
 const OutfitHub: React.FC = () => {
   const { user } = useAuth()
   const [profiles, setProfiles] = useState<UserProfile[]>([])
@@ -30,6 +65,8 @@ const OutfitHub: React.FC = () => {
   const [allSuggestions, setAllSuggestions] = useState<OutfitSuggestion[]>([])
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
+  const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
 
   useEffect(() => {
     if (!user) return
@@ -81,6 +118,36 @@ const OutfitHub: React.FC = () => {
       .filter((s) => ids.has(s.requestId))
       .sort((a, b) => (b.feedbackAt ?? b.createdAt ?? 0) - (a.feedbackAt ?? a.createdAt ?? 0))
   }, [allSuggestions, requests])
+
+  useEffect(() => {
+    if (!navigator.geolocation) { setWeatherLoading(false); return }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&timezone=auto`
+          )
+          const data = await res.json()
+          const code = data.current?.weather_code ?? 0
+          const temp = data.current?.temperature_2m ?? 0
+          const desc = weatherCodeToDesc(code)
+          const icon = weatherCodeToIcon(code)
+          // Reverse geocode for city name
+          let city = ''
+          try {
+            const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=tr`)
+            const geoData = await geoRes.json()
+            city = geoData.address?.city || geoData.address?.town || geoData.address?.province || ''
+          } catch { city = '' }
+          setWeather({ temp: Math.round(temp), description: desc, icon, city })
+        } catch (e) { console.error('Weather fetch error:', e) }
+        setWeatherLoading(false)
+      },
+      () => setWeatherLoading(false),
+      { timeout: 10000 }
+    )
+  }, [])
 
   const profileName = (uid: string) =>
     profiles.find((p) => p.id === uid)?.displayName ??
@@ -157,6 +224,22 @@ const OutfitHub: React.FC = () => {
         <p style={styles.sub}>
           Dolabından parça seçtirmek için birine istek at; gelen isteklerde onun dolabından kombin öner.
         </p>
+
+        {weather && (
+          <section style={{ ...styles.card, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ fontSize: 36 }}>{weather.icon}</span>
+            <div>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#fff' }}>
+                {weather.temp}°C · {weather.description}
+              </p>
+              {weather.city && <p style={{ margin: 0, fontSize: 13, color: '#888' }}>{weather.city}</p>}
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#666' }}>Kombin seçerken havayı göz önünde bulundur 🌡️</p>
+            </div>
+          </section>
+        )}
+        {weatherLoading && (
+          <p style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>Hava durumu yükleniyor…</p>
+        )}
 
         <section style={styles.card}>
           <h3 style={styles.h3}>✨ Kombin İsteği Gönder</h3>
@@ -267,7 +350,10 @@ const SuggestionFeedback: React.FC<{
         {s.clothingItemIds.map((id) => {
           const c = items[id]
           return c ? (
-            <img key={id} src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
+            <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 80 }}>
+              <img src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
+              {c.description ? <span style={{ fontSize: 10, color: '#aaa', textAlign: 'center', lineHeight: 1.2 }}>{c.description}</span> : null}
+            </div>
           ) : (
             <div key={id} style={styles.thumbPlaceholder} />
           )
@@ -292,7 +378,7 @@ const SuggestionFeedback: React.FC<{
             onSave(s, 'no', comment)
           }}
         >
-          Beğenmedim
+          🔄 Değişiklik İste
         </button>
       </div>
       <textarea

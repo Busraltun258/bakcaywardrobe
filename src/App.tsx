@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth'
 import { useAuth } from './context/AuthContext'
@@ -9,7 +8,6 @@ import Login from './pages/Login'
 import OutfitHub from './pages/OutfitHub'
 import RespondOutfit from './pages/RespondOutfit'
 import Wardrobe from './pages/Wardrobe'
-import { onForegroundMessage, requestNotificationPermission } from './utils/notifications'
 
 function AppRoutes() {
   const { isAdmin } = useAuth()
@@ -65,29 +63,23 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<SmartRedirect />} />
     </Routes>
   )
 }
 
+function SmartRedirect() {
+  const { user, loading, isAdmin } = useAuth()
+  if (loading) {
+    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f0f14', color: '#888' }}>Yükleniyor…</div>
+  }
+  if (user) {
+    return <Navigate to={isAdmin ? '/home' : '/wardrobe'} replace />
+  }
+  return <Navigate to="/login" replace />
+}
+
 function App() {
-  const { user } = useAuth()
-
-  useEffect(() => {
-    if (!user) return
-    // Bildirim izni iste ve token'ı Firestore'a kaydet
-    requestNotificationPermission(user.uid).catch(console.error)
-    const unsub = onForegroundMessage((payload) => {
-      if (Notification.permission === 'granted' && payload.notification) {
-        new Notification(payload.notification.title ?? 'WhatToWear', {
-          body: payload.notification.body ?? '',
-          icon: '/icon-192.png',
-        })
-      }
-    })
-    return () => unsub()
-  }, [user])
-
   return (
     <BrowserRouter>
       <AppRoutes />

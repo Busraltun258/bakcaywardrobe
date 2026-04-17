@@ -14,7 +14,12 @@ const Login: React.FC = () => {
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
-  if (!loading && user) {
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f0f14', color: '#888' }}>Yükleniyor…</div>
+    )
+  }
+  if (user) {
     return <Navigate to={isAdmin ? '/home' : '/wardrobe'} replace />
   }
 

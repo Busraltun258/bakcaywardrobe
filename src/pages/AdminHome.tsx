@@ -239,15 +239,13 @@ const AdminHome: React.FC = () => {
                   <p style={styles.smallMuted}>İstek yükleniyor…</p>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {s.liked === 'no' && (
-                    <button
-                      type="button"
-                      style={styles.editBtn}
-                      onClick={() => navigate(`/kombin/duzenle/${s.id}`)}
-                    >
-                      ✏️ Düzenle
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    style={styles.editBtn}
+                    onClick={() => navigate(`/kombin/duzenle/${s.id}`)}
+                  >
+                    ✏️ Düzenle
+                  </button>
                   <button
                     type="button"
                     style={styles.btnDeleteSugg}
