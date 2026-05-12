@@ -3,8 +3,8 @@ import { Card, Statistic, Button, Space, Typography } from "antd";
 
 const { Text } = Typography;
 
-// azimuth_speed: -100 → +100  (sol = -100, sağ = +100)
-// elevation_speed: -100 → +100  (aşağı = -100, yukarı = +100)
+// azimuth_speed:   sol = -100, sağ  = +100
+// elevation_speed: aşağı = -100, yukarı = +100
 
 const SIZE = 300;
 const CX = 150;
@@ -26,7 +26,7 @@ export default function JoystickController({ onSend }) {
     ky: 0,
     displaySpeed: 0,
     targetSpeed: 0,
-    dirAngle: 0,
+    dirAngle: -Math.PI / 2,
     prevMX: 0,
     prevMY: 0,
     prevT: 0,
@@ -37,21 +37,38 @@ export default function JoystickController({ onSend }) {
 
   const [azimuthSpeed, setAzimuthSpeed] = useState(0);
   const [elevationSpeed, setElevationSpeed] = useState(0);
-  const [speed, setSpeed] = useState(0);
   const [lastSent, setLastSent] = useState(null);
 
-  // azimuth_speed: kx → -100..+100
-  const calcAzimuthSpeed = (kx, ky) => {
-    const dist = Math.sqrt(kx * kx + ky * ky);
-    if (dist < 4) return 0;
-    return Math.round((kx / MAX_DRAG) * 100);
+  const isDark = () => {
+    const v = getComputedStyle(document.documentElement)
+      .getPropertyValue("--color-background-primary")
+      .trim();
+    if (!v) return false;
+    const hex = v.replace("#", "");
+    return parseInt(hex.slice(0, 2) || "ff", 16) < 128;
   };
 
-  // elevation_speed: -ky → -100..+100 (yukarı pozitif)
-  const calcElevationSpeed = (kx, ky) => {
-    const dist = Math.sqrt(kx * kx + ky * ky);
-    if (dist < 4) return 0;
-    return Math.round((-ky / MAX_DRAG) * 100);
+  const drawArrow = (ctx, fx, fy, angle, len, color, width, hs) => {
+    const ex = fx + Math.cos(angle) * len;
+    const ey = fy + Math.sin(angle) * len;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    const bx = ex - Math.cos(angle) * hs * 1.6;
+    const by = ey - Math.sin(angle) * hs * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(bx - Math.sin(angle) * hs, by + Math.cos(angle) * hs);
+    ctx.lineTo(bx + Math.sin(angle) * hs, by - Math.cos(angle) * hs);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   };
 
   const drawFrame = useCallback(() => {
@@ -60,8 +77,8 @@ export default function JoystickController({ onSend }) {
     const ctx = canvas.getContext("2d");
     const s = stateRef.current;
     ctx.clearRect(0, 0, SIZE, SIZE);
-
-    const borderCol = "rgba(60,60,70,0.14)";
+    const dark = isDark();
+    const borderCol = dark ? "rgba(180,180,190,0.18)" : "rgba(60,60,70,0.14)";
 
     // Outer ring
     ctx.beginPath();
@@ -88,7 +105,7 @@ export default function JoystickController({ onSend }) {
       const alpha = isMajor ? 0.9 : isMid ? 0.55 : 0.28;
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.strokeStyle = "rgba(50,50,60,1)";
+      ctx.strokeStyle = dark ? "rgba(200,200,210,1)" : "rgba(50,50,60,1)";
       ctx.lineWidth = lw;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -106,55 +123,68 @@ export default function JoystickController({ onSend }) {
       const arcW = OUTER_R - INNER_R - 2;
       ctx.beginPath();
       ctx.arc(CX, CY, midR, -Math.PI / 2, arcEnd);
-      ctx.strokeStyle = "rgba(83,74,183,0.45)";
+      ctx.strokeStyle = dark ? "rgba(127,119,221,0.45)" : "rgba(83,74,183,0.35)";
       ctx.lineWidth = arcW;
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(CX, CY, OUTER_R - 1, -Math.PI / 2, arcEnd);
-      ctx.strokeStyle = "rgba(83,74,183,0.85)";
+      ctx.strokeStyle = dark ? "rgba(175,169,236,0.85)" : "rgba(83,74,183,0.8)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
-    // Center dot
+    // Crosshair
+    ctx.save();
+    ctx.strokeStyle = dark ? "rgba(200,200,210,0.1)" : "rgba(60,60,70,0.08)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
     ctx.beginPath();
-    ctx.arc(CX, CY, 4, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(60,60,70,0.4)";
-    ctx.fill();
+    ctx.moveTo(CX, CY - INNER_R + 2);
+    ctx.lineTo(CX, CY + INNER_R - 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(CX - INNER_R + 2, CY);
+    ctx.lineTo(CX + INNER_R - 2, CY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
 
-    const drawArrow = (fx, fy, angle, len, color, width, hs) => {
-      const ex = fx + Math.cos(angle) * len;
-      const ey = fy + Math.sin(angle) * len;
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = width;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(fx, fy);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-      const bx = ex - Math.cos(angle) * hs * 1.6;
-      const by = ey - Math.sin(angle) * hs * 1.6;
-      ctx.beginPath();
-      ctx.moveTo(ex, ey);
-      ctx.lineTo(bx - Math.sin(angle) * hs, by + Math.cos(angle) * hs);
-      ctx.lineTo(bx + Math.sin(angle) * hs, by - Math.cos(angle) * hs);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    };
-
-    // Direction arrow (teal)
+    // Yön oku — teal, UZUN, her zaman görünür
     const dist = Math.sqrt(s.kx * s.kx + s.ky * s.ky);
-    if (dist > 4) {
-      const dirLen = 60 + (dist / MAX_DRAG) * 30;
-      drawArrow(CX, CY, s.dirAngle, dirLen, "#0F6E56", 2.5, 6);
+    const dirAlpha = 0.35 + (dist / MAX_DRAG) * 0.65;
+    ctx.save();
+    ctx.globalAlpha = dirAlpha;
+    drawArrow(ctx, CX, CY, s.dirAngle, 72, dark ? "#5DCAA5" : "#0F6E56", 2.5, 7);
+    ctx.restore();
+
+    // Speed oku — mor, KISA, her zaman görünür
+    const speedLen = 22 + (s.displaySpeed / 100) * 43;
+    const speedAlpha = 0.35 + (s.displaySpeed / 100) * 0.65;
+    ctx.save();
+    ctx.globalAlpha = speedAlpha;
+    drawArrow(ctx, CX, CY, -Math.PI / 2, speedLen, dark ? "#AFA9EC" : "#534AB7", 2.5, 6);
+    ctx.restore();
+
+    // Ok etiketleri — sürüklenince solar
+    const labelAlpha = Math.max(0, 1 - (dist / MAX_DRAG) * 2.5);
+    if (labelAlpha > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = labelAlpha;
+      ctx.font = `10px var(--font-mono, monospace)`;
+      ctx.fillStyle = dark ? "#5DCAA5" : "#0F6E56";
+      ctx.textAlign = "left";
+      ctx.fillText("yön", CX + 10, CY - 32);
+      ctx.fillStyle = dark ? "#AFA9EC" : "#534AB7";
+      ctx.textAlign = "right";
+      ctx.fillText("speed", CX - 10, CY - 32);
+      ctx.restore();
     }
 
-    // Speed arrow (purple, always up)
-    const speedLen = 20 + (s.displaySpeed / 100) * 72;
-    drawArrow(CX, CY, -Math.PI / 2, speedLen, "#534AB7", 2.5, 6);
+    // Merkez nokta
+    ctx.beginPath();
+    ctx.arc(CX, CY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = dark ? "rgba(200,200,210,0.5)" : "rgba(60,60,70,0.4)";
+    ctx.fill();
 
     // Knob
     const kclamped = Math.min(dist, MAX_DRAG);
@@ -163,22 +193,22 @@ export default function JoystickController({ onSend }) {
     const kky = CY + Math.sin(ka) * kclamped;
     ctx.beginPath();
     ctx.arc(kkx, kky, KNOB_R, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(250,250,255,0.97)";
-    ctx.strokeStyle = "rgba(83,74,183,0.5)";
+    ctx.fillStyle = dark ? "rgba(35,33,55,0.95)" : "rgba(252,252,255,0.97)";
+    ctx.strokeStyle = dark ? "rgba(175,169,236,0.55)" : "rgba(83,74,183,0.45)";
     ctx.lineWidth = 1.5;
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(kkx, kky, 4, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(83,74,183,0.6)";
+    ctx.fillStyle = dark ? "rgba(175,169,236,0.7)" : "rgba(83,74,183,0.6)";
     ctx.fill();
   }, []);
 
   const updateReactState = useCallback(() => {
     const s = stateRef.current;
-    setSpeed(Math.round(s.displaySpeed));
-    setAzimuthSpeed(calcAzimuthSpeed(s.kx, s.ky));
-    setElevationSpeed(calcElevationSpeed(s.kx, s.ky));
+    const dist = Math.sqrt(s.kx * s.kx + s.ky * s.ky);
+    setAzimuthSpeed(dist < 4 ? 0 : Math.round((s.kx / MAX_DRAG) * 100));
+    setElevationSpeed(dist < 4 ? 0 : Math.round((-s.ky / MAX_DRAG) * 100));
   }, []);
 
   const animate = useCallback(() => {
@@ -253,8 +283,7 @@ export default function JoystickController({ onSend }) {
     if (!s.dragging) return;
     s.dragging = false;
     s.targetSpeed = 0;
-    const sx = s.kx,
-      sy = s.ky;
+    const sx = s.kx, sy = s.ky;
     let f = 0;
     const ret = () => {
       f++;
@@ -263,10 +292,7 @@ export default function JoystickController({ onSend }) {
       s.kx = sx * (1 - e);
       s.ky = sy * (1 - e);
       if (p < 1) requestAnimationFrame(ret);
-      else {
-        s.kx = 0;
-        s.ky = 0;
-      }
+      else { s.kx = 0; s.ky = 0; s.dirAngle = -Math.PI / 2; }
     };
     requestAnimationFrame(ret);
     startAnim();
@@ -275,41 +301,25 @@ export default function JoystickController({ onSend }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const onMouseDown = (e) => { e.preventDefault(); onDown(e.clientX, e.clientY); };
+    const onMouseMove = (e) => { if (stateRef.current.dragging) updateKnob(e.clientX, e.clientY); };
+    const onTouchStart = (e) => { e.preventDefault(); const t = e.touches[0]; onDown(t.clientX, t.clientY); };
+    const onTouchMove = (e) => { if (stateRef.current.dragging) { const t = e.touches[0]; updateKnob(t.clientX, t.clientY); } };
 
-    const handleMouseDown = (e) => {
-      e.preventDefault();
-      onDown(e.clientX, e.clientY);
-    };
-    const handleMouseMove = (e) => {
-      if (stateRef.current.dragging) updateKnob(e.clientX, e.clientY);
-    };
-    const handleTouchStart = (e) => {
-      e.preventDefault();
-      const t = e.touches[0];
-      onDown(t.clientX, t.clientY);
-    };
-    const handleTouchMove = (e) => {
-      if (stateRef.current.dragging) {
-        const t = e.touches[0];
-        updateKnob(t.clientX, t.clientY);
-      }
-    };
-
-    canvas.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
     window.addEventListener("touchend", onUp);
-
     drawFrame();
 
     return () => {
-      canvas.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onUp);
-      canvas.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchmove", handleTouchMove);
+      canvas.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onUp);
       if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
     };
@@ -324,15 +334,10 @@ export default function JoystickController({ onSend }) {
   const handleReset = () => {
     const s = stateRef.current;
     if (s.rafId) cancelAnimationFrame(s.rafId);
-    s.kx = 0;
-    s.ky = 0;
-    s.targetSpeed = 0;
-    s.displaySpeed = 0;
-    s.velMag = 0;
-    s.animating = false;
+    s.kx = 0; s.ky = 0; s.targetSpeed = 0; s.displaySpeed = 0;
+    s.velMag = 0; s.animating = false; s.dirAngle = -Math.PI / 2;
     setAzimuthSpeed(0);
     setElevationSpeed(0);
-    setSpeed(0);
     setLastSent(null);
     drawFrame();
   };
@@ -351,15 +356,12 @@ export default function JoystickController({ onSend }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-        <Card size="small" style={{ textAlign: "center", background: "#fafafa" }}>
-          <Statistic title="Hız" value={speed} suffix="%" valueStyle={{ fontSize: 20 }} />
-        </Card>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
         <Card size="small" style={{ textAlign: "center", background: "#fafafa" }}>
           <Statistic
             title="azimuth_speed"
             value={azimuthSpeed}
-            valueStyle={{ fontSize: 20, color: "#0F6E56" }}
+            valueStyle={{ fontSize: 22, color: "#0F6E56" }}
           />
           <Text type="secondary" style={{ fontSize: 11 }}>-100 / +100</Text>
         </Card>
@@ -367,32 +369,24 @@ export default function JoystickController({ onSend }) {
           <Statistic
             title="elevation_speed"
             value={elevationSpeed}
-            valueStyle={{ fontSize: 20, color: "#534AB7" }}
+            valueStyle={{ fontSize: 22, color: "#534AB7" }}
           />
           <Text type="secondary" style={{ fontSize: 11 }}>-100 / +100</Text>
         </Card>
       </div>
 
       <Space style={{ width: "100%", justifyContent: "center" }}>
-        <Button type="primary" onClick={handleSend}>
-          Gönder
-        </Button>
+        <Button type="primary" onClick={handleSend}>Gönder</Button>
         <Button onClick={handleReset}>Sıfırla</Button>
       </Space>
 
       {lastSent && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "8px 12px",
-            background: "#f5f5f5",
-            borderRadius: 8,
-            fontFamily: "monospace",
-            fontSize: 12,
-            color: "#555",
-            textAlign: "center",
-          }}
-        >
+        <div style={{
+          marginTop: 12, padding: "8px 12px",
+          background: "#f5f5f5", borderRadius: 8,
+          fontFamily: "monospace", fontSize: 12,
+          color: "#555", textAlign: "center",
+        }}>
           gönderildi → {JSON.stringify(lastSent)}
         </div>
       )}
@@ -400,7 +394,7 @@ export default function JoystickController({ onSend }) {
   );
 }
 
-// Kullanım örneği:
+// Kullanım:
 // <JoystickController onSend={(payload) => fetch('/api/control', {
 //   method: 'POST',
 //   headers: { 'Content-Type': 'application/json' },
