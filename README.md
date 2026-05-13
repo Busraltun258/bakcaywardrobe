@@ -138,6 +138,9 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
     dirAngle: -Math.PI / 2,
     rafId: null,
     lastSendT: 0,
+    // Hız ölçümü
+    prevMX: 0, prevMY: 0, prevT: 0,
+    velX: 0, velY: 0,          // piksel/ms — smooth edilmiş
   });
 
   const [azimuth,   setAzimuth]   = useState(0);
@@ -319,6 +322,8 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
     drawFrame();
 
     // React state güncelle
+    // Pozisyon tabanlı: knob ne kadar uzakta → o kadar hızlı
+    // Knob sağda dururken kamera sağa dönmeye devam eder, bırakınca durur
     const dist = Math.sqrt(s.kx * s.kx + s.ky * s.ky);
     const az = dist < 3 ? 0 : Math.round((s.kx / MAX_DRAG) * 100);
     const el = dist < 3 ? 0 : Math.round((-s.ky / MAX_DRAG) * 100);
@@ -359,6 +364,8 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
     const rect = canvas.getBoundingClientRect();
     s.dragging  = true;
     s.returning = false;
+    s.velX = 0; s.velY = 0;
+    s.prevMX = mx; s.prevMY = my; s.prevT = performance.now();
     s.kx = mx - rect.left - CX;
     s.ky = my - rect.top  - CY;
     const dist = Math.sqrt(s.kx * s.kx + s.ky * s.ky);
@@ -379,12 +386,23 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
     if (dist > MAX_DRAG) { nx = (nx / dist) * MAX_DRAG; ny = (ny / dist) * MAX_DRAG; }
     s.kx = nx; s.ky = ny;
     if (dist > 4) s.dirAngle = Math.atan2(ny, nx);
+
+    // Pointer hızını ölç (piksel/ms), exponential smooth
+    const now = performance.now();
+    const dt  = Math.max(now - s.prevT, 1);
+    const ivx = (mx - s.prevMX) / dt;
+    const ivy = (my - s.prevMY) / dt;
+    const ALPHA = 0.7; // ne kadar smooth (0=çok smooth, 1=anlık)
+    s.velX = lerp(s.velX, ivx, ALPHA);
+    s.velY = lerp(s.velY, ivy, ALPHA);
+    s.prevMX = mx; s.prevMY = my; s.prevT = now;
   }, []);
 
   const onUp = useCallback(() => {
     const s = stateRef.current;
     if (!s.dragging) return;
     s.dragging     = false;
+    s.velX = 0; s.velY = 0;
     s.returning    = true;
     s.returnFrame  = 0;
     s.returnSx     = s.kx;
@@ -442,7 +460,6 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
   // ─── Render ────────────────────────────────────────────────────────────────
   const az  = azimuth;
   const el  = elevation;
-  const spd = Math.round(Math.sqrt(az * az + el * el) / Math.SQRT2);
 
   return (
     <div style={{
@@ -486,11 +503,10 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "0 18px 16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 18px 16px" }}>
         {[
-          { label: "azimuth",   value: az,  unit: "←→" },
-          { label: "elevation", value: el,  unit: "↑↓" },
-          { label: "speed",     value: spd, unit: "%" },
+          { label: "azimuth_speed",   value: az,  unit: "←→" },
+          { label: "elevation_speed", value: el,  unit: "↑↓" },
         ].map(({ label, value, unit }) => (
           <div key={label} style={{
             background: "rgba(120,115,180,0.06)",
@@ -502,9 +518,7 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
             </div>
             <div style={{
               fontSize: 22, fontWeight: 600, lineHeight: 1,
-              color: label === "azimuth"   ? "#5DCAA5"
-                   : label === "elevation" ? "#AFA9EC"
-                   : undefined,
+              color: label === "azimuth_speed"   ? "#5DCAA5" : "#AFA9EC",
             }}>
               {value > 0 ? `+${value}` : value}
             </div>
