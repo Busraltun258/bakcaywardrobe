@@ -569,4 +569,55 @@ export default function JoystickController({ dataChannel, sendHz = 20 }) {
  *   // elevation_speed: -100 (aşağı) .. +100 (yukarı)
  * };
  * ─────────────────────────────────────────────────────────────────────────────
+
  */
+
+
+
+// bu da kalveydekı oklar ııcın 
+const keysPressed = useRef(new Set());
+const keyLoopRef  = useRef(null);
+
+const startKeyLoop = () => {
+  if (keyLoopRef.current) return; // zaten çalışıyor
+  keyLoopRef.current = setInterval(() => {
+    const keys = keysPressed.current;
+    let az = 0, el = 0;
+    if (keys.has("ArrowLeft"))  az = -100;
+    if (keys.has("ArrowRight")) az = +100;
+    if (keys.has("ArrowUp"))    el = +100;
+    if (keys.has("ArrowDown"))  el = -100;
+    
+    // Joystick'teki aynı send fonksiyonunu çağır
+    sendToChannel(az, el);
+  }, 1000 / sendHz); // 20Hz — joystick ile aynı
+};
+
+const stopKeyLoop = () => {
+  if (keyLoopRef.current) {
+    clearInterval(keyLoopRef.current);
+    keyLoopRef.current = null;
+  }
+  sendToChannel(0, 0); // bırakınca durdur
+};
+
+useEffect(() => {
+  const onKeyDown = (e) => {
+    if (!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) return;
+    e.preventDefault();
+    keysPressed.current.add(e.key);
+    startKeyLoop();
+  };
+  const onKeyUp = (e) => {
+    keysPressed.current.delete(e.key);
+    if (keysPressed.current.size === 0) stopKeyLoop();
+  };
+
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup",   onKeyUp);
+  return () => {
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keyup",   onKeyUp);
+    stopKeyLoop();
+  };
+}, []);
