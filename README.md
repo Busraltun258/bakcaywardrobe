@@ -621,3 +621,21 @@ useEffect(() => {
     stopKeyLoop();
   };
 }, []);
+
+// zoom ıcın 
+// Her scroll eventinde değil, 100ms'de bir gönder
+const lastWheelT = useRef(0);
+
+const onWheel = (e) => {
+  e.preventDefault();
+  const now = performance.now();
+  if (now - lastWheelT.current < 100) return; // throttle
+  lastWheelT.current = now;
+
+  const delta = e.deltaY > 0 ? -5 : +5; // scroll aşağı = zoom out
+  setZoomLevel(prev => {
+    const next = clamp(prev + delta, 0, 100);
+    dataChannel.send(JSON.stringify({ type: "zoom", level: next }));
+    return next;
+  });
+};
