@@ -290,6 +290,11 @@ const OutfitHub: React.FC = () => {
                   <strong>{profileName(r.fromUid)}</strong> kombin istiyor
                   {r.note ? ` · "${r.note}"` : ''}
                 </p>
+                {r.requestDate && (
+                  <p style={{ fontSize: 12, color: '#6366f1', margin: '-4px 0 8px', fontWeight: 600 }}>
+                    📅 Kombin tarihi: {r.requestDate.split('-').reverse().join('.')}
+                  </p>
+                )}
                 <button
                   type="button"
                   style={styles.btn}

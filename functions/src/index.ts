@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 
 admin.initializeApp()
+// trigger refresh
 
 // Yeni kombin önerisi oluştuğunda isteği gönderen kullanıcıya bildirim at
 export const onYeniOneri = onDocumentCreated('outfitSuggestions/{sid}', async (event) => {

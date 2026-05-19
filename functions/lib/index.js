@@ -37,6 +37,7 @@ exports.onYeniOneri = void 0;
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-functions/v2/firestore");
 admin.initializeApp();
+// trigger refresh
 // Yeni kombin önerisi oluştuğunda isteği gönderen kullanıcıya bildirim at
 exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid}', async (event) => {
     var _a, _b;
