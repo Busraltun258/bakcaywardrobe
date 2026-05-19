@@ -147,7 +147,12 @@ const AdminHome: React.FC = () => {
                   </p>
                   <span style={{ ...styles.badge, backgroundColor: '#f59e0b' }}>⏳ Bekliyor</span>
                 </div>
-                <p style={styles.time}>📅 {time}</p>
+                <p style={styles.time}>🕒 Created Time: {time}</p>
+                {r.requestDate && (
+                  <p style={{ fontSize: 13, color: '#6366f1', margin: '4px 0 0', fontWeight: 600 }}>
+                    📅 Kombin tarihi: {r.requestDate.split('-').reverse().join('.')}
+                  </p>
+                )}
                 {r.note ? <p style={{ fontSize: 14, color: '#ccc', margin: '6px 0 0' }}><strong>Not:</strong> {r.note}</p> : null}
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                   <button
