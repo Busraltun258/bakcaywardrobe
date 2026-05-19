@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth'
 import { useAuth } from './context/AuthContext'
+import { useNotifications } from './hooks/useNotifications'
 import AdminHome from './pages/AdminHome'
 import CategoryDetail from './pages/CategoryDetail'
 import EditSuggestion from './pages/EditSuggestion'
@@ -11,6 +12,7 @@ import Wardrobe from './pages/Wardrobe'
 
 function AppRoutes() {
   const { isAdmin } = useAuth()
+  useNotifications()
 
   return (
     <Routes>

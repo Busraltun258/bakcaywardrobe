@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getMessaging, isSupported } from 'firebase/messaging'
 
 const firebaseConfig = {
   apiKey: "AIzaSyCuJ-3NzsNEz7L9lNAt8OjidaMs-_NiYKE",
@@ -16,4 +17,8 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 setPersistence(auth, browserLocalPersistence).catch(console.error)
 export const db = getFirestore(app)
+
+// Messaging sadece desteklenen tarayıcılarda başlat
+export const messagingPromise = isSupported().then((ok) => ok ? getMessaging(app) : null)
+
 export default app
