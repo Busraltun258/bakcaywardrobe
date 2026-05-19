@@ -66,7 +66,7 @@ const Navbar: React.FC = () => {
                 ...(location.pathname.startsWith('/wardrobe') ? styles.activeLink : {}),
               }}
             >
-              Bakçay Dolap
+              Dolap 
             </button>
             <button
               type="button"
