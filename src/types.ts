@@ -21,6 +21,7 @@ export interface OutfitRequest {
   note: string
   status: OutfitRequestStatus
   createdAt: number
+  requestDate?: string
 }
 
 export type OutfitLiked = 'yes' | 'no' | null

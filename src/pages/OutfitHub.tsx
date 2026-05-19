@@ -66,6 +66,7 @@ const OutfitHub: React.FC = () => {
   const [toMe, setToMe] = useState<OutfitRequest[]>([])
   const [allSuggestions, setAllSuggestions] = useState<OutfitSuggestion[]>([])
   const [note, setNote] = useState('')
+  const [requestDate, setRequestDate] = useState(() => new Date().toISOString().split('T')[0])
   const [sending, setSending] = useState(false)
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
@@ -190,8 +191,10 @@ const OutfitHub: React.FC = () => {
         note: note.trim(),
         status: 'pending',
         createdAt: Date.now(),
+        requestDate: requestDate,
       })
       setNote('')
+      setRequestDate(new Date().toISOString().split('T')[0])
       alert('İstek gönderildi.')
     } catch (e) {
       console.error(e)
@@ -259,8 +262,17 @@ const OutfitHub: React.FC = () => {
               style={styles.textarea}
               rows={2}
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: '#888', flexShrink: 0 }}>📅 Kombin tarihi:</span>
+              <input
+                type="date"
+                value={requestDate}
+                onChange={(e) => setRequestDate(e.target.value)}
+                style={styles.dateInput}
+              />
+            </div>
             <button type="button" style={styles.btn} onClick={sendRequest} disabled={sending}>
-              {sending ? 'Gönderiliyor…' : `📩 İstek Gönder · ${new Date().toLocaleDateString('tr-TR')}`}
+              {sending ? 'Gönderiliyor…' : '📩 İstek Gönder'}
             </button>
           </section>
         )}
@@ -303,6 +315,11 @@ const OutfitHub: React.FC = () => {
                     → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
                     {r.note ? ` · "${r.note}"` : ''}
                   </p>
+                  {r.requestDate && (
+                    <p style={{ fontSize: 12, color: '#6366f1', margin: '-4px 0 8px', fontWeight: 600 }}>
+                      📅 Kombin tarihi: {r.requestDate.split('-').reverse().join('.')}
+                    </p>
+                  )}
                   {suggs.length === 0 && r.status === 'pending' ? (
                     <p style={styles.muted}>Öneri henüz yok.</p>
                   ) : null}
@@ -486,6 +503,16 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     fontWeight: 600,
     cursor: 'pointer',
+  },
+  dateInput: {
+    flex: 1,
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'rgba(255,255,255,0.07)',
+    color: '#fff',
+    fontSize: 14,
+    colorScheme: 'dark',
   },
   btnGhost: {
     padding: '8px 14px',
