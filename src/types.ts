@@ -56,7 +56,7 @@ export const CATEGORIES = [
   { key: 'kazak', label: 'Kazak', emoji: '🧶' },
   { key: 'ceket', label: 'Ceket', emoji: '🧥' },
   { key: 'gomlek', label: 'Gömlek', emoji: '👔' },
-  { key: 'mont', label: 'Mont', emoji: '🧥' },
+  { key: 'mont', label: 'Mont', emoji: '🥼' },
   { key: 'sort', label: 'Şort', emoji: '🩳' },
   { key: 'ayakkabi', label: 'Ayakkabı', emoji: '👟' },
   { key: 'aksesuar', label: 'Aksesuar', emoji: '⌚' },

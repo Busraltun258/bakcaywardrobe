@@ -4,7 +4,9 @@ import {
     doc,
     getDoc,
     getDocs,
+    query,
     updateDoc,
+    where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -26,6 +28,7 @@ const RespondOutfit: React.FC = () => {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [catFilter, setCatFilter] = useState<string | 'all'>('all')
+  const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
 
   useEffect(() => {
     if (!requestId || !user) return
@@ -50,14 +53,26 @@ const RespondOutfit: React.FC = () => {
 
   useEffect(() => {
     if (!req?.wardrobeOwnerUid) return
+    const ownerUid = req.wardrobeOwnerUid
+    const cacheKey = `bk_clothes_all_${ownerUid}`
+
+    // Önbellekten anında göster
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const list = JSON.parse(cached) as ClothingItem[]
+        list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        setWardrobe(list)
+      }
+    } catch {}
+
+    // Sadece o kullanıcının kıyafetlerini çek (tüm koleksiyonu değil)
     ;(async () => {
-      const snap = await getDocs(collection(db, 'clothes'))
-      const mapped = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as ClothingItem[]
-      const list = mapped.filter((c) => c.ownerId === req.wardrobeOwnerUid)
+      const q = query(collection(db, 'clothes'), where('ownerId', '==', ownerUid))
+      const snap = await getDocs(q)
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      try { localStorage.setItem(cacheKey, JSON.stringify(list)) } catch {}
       setWardrobe(list)
     })()
   }, [req?.wardrobeOwnerUid])
@@ -167,15 +182,18 @@ const RespondOutfit: React.FC = () => {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => toggle(item.id)}
+                onClick={() => setEnlargedItem(item)}
                 style={{
                   ...styles.cell,
                   ...(selected.has(item.id) ? styles.cellOn : {}),
                 }}
               >
                 <img src={clothingItemImageSrc(item)} alt="" style={styles.img} />
-                {item.description ? <span style={styles.descTag}>{item.description}</span> : item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
-                {item.description && item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
+                {(item.label || item.description) && (
+                  <span style={styles.labelTag}>
+                    {item.label || item.description}
+                  </span>
+                )}
                 {selected.has(item.id) ? <span style={styles.check}>✓</span> : null}
               </button>
             ))
@@ -197,6 +215,37 @@ const RespondOutfit: React.FC = () => {
           Vazgeç
         </button>
       </div>
+
+      {/* Kıyafet detay modalı */}
+      {enlargedItem && (
+        <div style={styles.lightbox} onClick={() => setEnlargedItem(null)}>
+          <div style={styles.lightboxInner} onClick={(e) => e.stopPropagation()}>
+            <button style={styles.lightboxClose} onClick={() => setEnlargedItem(null)}>✕</button>
+            <img src={clothingItemImageSrc(enlargedItem)} alt="" style={styles.lightboxImg} />
+            <div style={styles.lightboxBody}>
+              {enlargedItem.label && (
+                <p style={{ margin: 0, fontWeight: 700, color: '#fff', fontSize: 16 }}>{enlargedItem.label}</p>
+              )}
+              {enlargedItem.description && (
+                <p style={{ margin: '6px 0 0', color: '#aaa', fontSize: 14, lineHeight: 1.6 }}>{enlargedItem.description}</p>
+              )}
+              <button
+                type="button"
+                style={{
+                  ...styles.lightboxToggle,
+                  ...(selected.has(enlargedItem.id) ? styles.lightboxToggleOn : {}),
+                }}
+                onClick={() => {
+                  toggle(enlargedItem.id)
+                  setEnlargedItem(null)
+                }}
+              >
+                {selected.has(enlargedItem.id) ? '✓ Seçildi — Çıkar' : '+ Kombine Ekle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -241,7 +290,13 @@ const styles: Record<string, React.CSSProperties> = {
   cellOn: { borderColor: '#818cf8' },
   img: { width: '100%', height: '100%', objectFit: 'cover' },
   labelTag: { position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, padding: '3px 6px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
-  descTag: { position: 'absolute', bottom: 16, left: 0, right: 0, background: 'rgba(99,102,241,0.75)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+  lightbox: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  lightboxInner: { position: 'relative', maxWidth: 480, width: '100%', background: '#1a1a24', borderRadius: 16, overflow: 'hidden' },
+  lightboxClose: { position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  lightboxImg: { width: '100%', maxHeight: '60vh', objectFit: 'contain', display: 'block' },
+  lightboxBody: { padding: '14px 16px 18px' },
+  lightboxToggle: { marginTop: 14, width: '100%', padding: '12px 0', borderRadius: 10, border: '2px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: '#ccc', fontSize: 15, fontWeight: 600, cursor: 'pointer' },
+  lightboxToggleOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.25)', color: '#fff' },
   check: {
     position: 'absolute',
     top: 4,

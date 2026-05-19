@@ -11,7 +11,7 @@ const Home: React.FC = () => {
     <div style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
       <Navbar />
       <div className="home">
-        <h1>👗 Dolabım</h1>
+        <h1>👗 Bakçay Dolap</h1>
         <p style={{ textAlign: 'center', color: '#666', marginTop: '-0.5rem', marginBottom: '1.5rem' }}>
           Kategorilere tıklayarak kıyafetlerini yönet
         </p>

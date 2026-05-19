@@ -10,7 +10,7 @@ const Wardrobe: React.FC = () => {
     <div style={styles.page}>
       <Navbar />
       <div style={styles.container}>
-        <h2 style={styles.title}>🧥 Dolabım</h2>
+        <h2 style={styles.title}>👗 Bakçay Dolap</h2>
         <p style={styles.subtitle}>Kıyafetlerini görmek veya eklemek için kategori seç</p>
         <div style={styles.list}>
           {CATEGORIES.map((cat) => (

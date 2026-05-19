@@ -40,7 +40,7 @@ const Navbar: React.FC = () => {
   return (
     <nav style={styles.nav}>
       <h1 style={styles.logo} onClick={() => navigate(isAdmin ? '/home' : '/wardrobe')}>
-        {isAdmin ? '🎨 Admin Panel' : '🧥 Dolabım'}
+        {isAdmin ? '🎨 Admin Panel' : 'BAKÇAY'}
       </h1>
       <div style={styles.links}>
         {isAdmin ? (
@@ -66,7 +66,7 @@ const Navbar: React.FC = () => {
                 ...(location.pathname.startsWith('/wardrobe') ? styles.activeLink : {}),
               }}
             >
-              Dolabım
+              Bakçay Dolap
             </button>
             <button
               type="button"

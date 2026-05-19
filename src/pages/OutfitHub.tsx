@@ -11,6 +11,7 @@ import {
     where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -58,7 +59,8 @@ interface WeatherData {
 }
 
 const OutfitHub: React.FC = () => {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
+  const navigate = useNavigate()
   const [profiles, setProfiles] = useState<UserProfile[]>([])
   const [fromMe, setFromMe] = useState<OutfitRequest[]>([])
   const [toMe, setToMe] = useState<OutfitRequest[]>([])
@@ -133,7 +135,6 @@ const OutfitHub: React.FC = () => {
           const temp = data.current?.temperature_2m ?? 0
           const desc = weatherCodeToDesc(code)
           const icon = weatherCodeToIcon(code)
-          // Reverse geocode for city name
           let city = ''
           try {
             const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=tr`)
@@ -159,7 +160,12 @@ const OutfitHub: React.FC = () => {
     [requests, user]
   )
 
-  // Admin kullanıcıyı bul (isAdmin: true veya bilinen admin email)
+  // Bana gelen istekler (öneri yapabileceğim)
+  const myIncoming = useMemo(
+    () => toMe.filter((r) => r.status === 'pending').sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+    [toMe]
+  )
+
   const ADMIN_EMAILS = ['altunbusra32@gmail.com', 'busra@dolap.com']
   const adminProfile = useMemo(
     () =>
@@ -171,8 +177,6 @@ const OutfitHub: React.FC = () => {
   const sendRequest = async () => {
     if (!user) return
     const adminUid = adminProfile?.id
-    console.log('Admin profile:', adminProfile)
-    console.log('All profiles:', profiles.map(p => ({ id: p.id, email: p.email, isAdmin: p.isAdmin })))
     if (!adminUid) {
       alert('Admin kullanıcı bulunamadı. Profiller yükleniyor olabilir, tekrar deneyin.')
       return
@@ -241,22 +245,50 @@ const OutfitHub: React.FC = () => {
           <p style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>Hava durumu yükleniyor…</p>
         )}
 
-        <section style={styles.card}>
-          <h3 style={styles.h3}>✨ Kombin İsteği Gönder</h3>
-          <p style={{ fontSize: 13, color: '#888', margin: '0 0 10px' }}>
-            Dolabından kombin önerilmesini iste — istek stilistimize iletilecek.
-          </p>
-          <textarea
-            placeholder="Kısa not (ör. yarın akşam davet var)…"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            style={styles.textarea}
-            rows={2}
-          />
-          <button type="button" style={styles.btn} onClick={sendRequest} disabled={sending}>
-            {sending ? 'Gönderiliyor…' : '📩 İstek Gönder'}
-          </button>
-        </section>
+        {/* Kombin isteği gönder — sadece admin olmayan kullanıcılar */}
+        {!isAdmin && (
+          <section style={styles.card}>
+            <h3 style={styles.h3}>✨ Kombin İsteği Gönder</h3>
+            <p style={{ fontSize: 13, color: '#888', margin: '0 0 10px' }}>
+              Dolabından kombin önerilmesini iste — istek stilistimize iletilecek.
+            </p>
+            <textarea
+              placeholder="Kısa not (ör. yarın akşam davet var)…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              style={styles.textarea}
+              rows={2}
+            />
+            <button type="button" style={styles.btn} onClick={sendRequest} disabled={sending}>
+              {sending ? 'Gönderiliyor…' : `📩 İstek Gönder · ${new Date().toLocaleDateString('tr-TR')}`}
+            </button>
+          </section>
+        )}
+
+        {/* Gelen istekler — öneri yapılabilir */}
+        {myIncoming.length > 0 && (
+          <section style={styles.card}>
+            <h3 style={styles.h3}>📬 Gelen İstekler</h3>
+            <p style={{ fontSize: 13, color: '#888', margin: '0 0 10px' }}>
+              Aşağıdaki kişiler senden kombin önerisi bekliyor.
+            </p>
+            {myIncoming.map((r) => (
+              <div key={r.id} style={styles.block}>
+                <p style={styles.reqLine}>
+                  <strong>{profileName(r.fromUid)}</strong> kombin istiyor
+                  {r.note ? ` · "${r.note}"` : ''}
+                </p>
+                <button
+                  type="button"
+                  style={styles.btn}
+                  onClick={() => navigate(`/kombin/yanit/${r.id}`)}
+                >
+                  👗 Kombin Öner
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
 
         <section style={styles.card}>
           <h3 style={styles.h3}>Gönderdiğim istekler & öneriler</h3>
@@ -267,13 +299,10 @@ const OutfitHub: React.FC = () => {
               const suggs = suggestions.filter((s) => s.requestId === r.id)
               return (
                 <div key={r.id} style={styles.block}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <p style={styles.reqLine}>
-                      → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
-                      {r.note ? ` · "${r.note}"` : ''}
-                    </p>
-
-                  </div>
+                  <p style={styles.reqLine}>
+                    → <strong>{profileName(r.toUid)}</strong> · {r.status === 'pending' ? 'bekliyor' : 'yanıtlandı'}
+                    {r.note ? ` · "${r.note}"` : ''}
+                  </p>
                   {suggs.length === 0 && r.status === 'pending' ? (
                     <p style={styles.muted}>Öneri henüz yok.</p>
                   ) : null}
@@ -281,6 +310,7 @@ const OutfitHub: React.FC = () => {
                     <SuggestionFeedback
                       key={s.id}
                       s={s}
+                      isAdmin={isAdmin}
                       itemIdsKey={[...s.clothingItemIds].sort().join('|')}
                       profileName={profileName}
                       onSave={saveFeedback}
@@ -307,11 +337,12 @@ const OutfitHub: React.FC = () => {
 
 const SuggestionFeedback: React.FC<{
   s: OutfitSuggestion
+  isAdmin: boolean
   itemIdsKey: string
   profileName: (uid: string) => string
   onSave: (s: OutfitSuggestion, liked: 'yes' | 'no' | null | undefined, comment: string) => void
   onDelete: () => void
-}> = ({ s, itemIdsKey, profileName, onSave, onDelete }) => {
+}> = ({ s, isAdmin, itemIdsKey, profileName, onSave, onDelete }) => {
   const [comment, setComment] = useState(s.comment ?? '')
   const [liked, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
   const [items, setItems] = useState<Record<string, ClothingItem>>({})
@@ -392,9 +423,11 @@ const SuggestionFeedback: React.FC<{
         <button type="button" style={styles.btnGhost} onClick={() => onSave(s, undefined, comment)}>
           Yorumu kaydet
         </button>
-        <button type="button" style={styles.btnDeleteSugg} onClick={onDelete}>
-          🗑️ Öneriyi Sil
-        </button>
+        {isAdmin && (
+          <button type="button" style={styles.btnDeleteSugg} onClick={onDelete}>
+            🗑️ Öneriyi Sil
+          </button>
+        )}
       </div>
     </div>
   )
