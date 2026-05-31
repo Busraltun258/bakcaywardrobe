@@ -35,8 +35,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  documentId,
-  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -116,6 +114,7 @@ const OutfitHub: React.FC = () => {
   const [fromMe, setFromMe] = useState<OutfitRequest[]>([])
   const [toMe, setToMe] = useState<OutfitRequest[]>([])
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
+  const [allClothes, setAllClothes] = useState<Record<string, ClothingItem>>({})
   const [note, setNote] = useState('')
   const [requestType, setRequestType] = useState<RequestType>('single')
   const [requestDate, setRequestDate] = useState<Dayjs>(() => dayjs())
@@ -181,6 +180,35 @@ const OutfitHub: React.FC = () => {
     const q = query(collection(db, 'outfitSuggestions'), where('requesterUid', '==', user.uid))
     return onSnapshot(q, (snap) => {
       setSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion)))
+    })
+  }, [user])
+
+  // Dolabı sayfa açılınca BİR KEZ yükle — her SuggestionCard'ın ayrı sorgu atmasını
+  // engeller. Dolabım sayfasının cache'ini de paylaşırız → cold start anında render.
+  useEffect(() => {
+    if (!user) return
+    const cacheKey = `bk_clothes_all_${user.uid}`
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const list = JSON.parse(cached) as ClothingItem[]
+        const map: Record<string, ClothingItem> = {}
+        list.forEach((c) => {
+          map[c.id] = c
+        })
+        setAllClothes(map)
+      }
+    } catch {}
+    const q = query(collection(db, 'clothes'), where('ownerId', '==', user.uid))
+    return onSnapshot(q, (snap) => {
+      const map: Record<string, ClothingItem> = {}
+      snap.docs.forEach((d) => {
+        map[d.id] = { id: d.id, ...d.data() } as ClothingItem
+      })
+      setAllClothes(map)
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(Object.values(map)))
+      } catch {}
     })
   }, [user])
 
@@ -571,6 +599,7 @@ const OutfitHub: React.FC = () => {
               suggestions={suggs}
               profileName={profileName}
               isAdmin={isAdmin}
+              allClothes={allClothes}
               onPreview={openSlideshow}
               onDeleteSuggestion={(s) => {
                 modal.confirm({
@@ -675,6 +704,7 @@ interface RequestThreadProps {
   isAdmin: boolean
   onDeleteSuggestion: (s: OutfitSuggestion) => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  allClothes: Record<string, ClothingItem>
 }
 
 const RequestThread: React.FC<RequestThreadProps> = ({
@@ -684,6 +714,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
   isAdmin,
   onDeleteSuggestion,
   onPreview,
+  allClothes,
 }) => {
   const isWeekly = request.requestType === 'weekly'
   return (
@@ -741,6 +772,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           suggestions={suggestions}
           profileName={profileName}
           isAdmin={isAdmin}
+          allClothes={allClothes}
           onDelete={onDeleteSuggestion}
           onPreview={onPreview}
         />
@@ -751,6 +783,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
             suggestion={s}
             profileName={profileName}
             isAdmin={isAdmin}
+            allClothes={allClothes}
             onDelete={() => onDeleteSuggestion(s)}
             onPreview={onPreview}
           />
@@ -764,9 +797,10 @@ const WeeklyView: React.FC<{
   suggestions: OutfitSuggestion[]
   profileName: (uid: string) => string
   isAdmin: boolean
+  allClothes: Record<string, ClothingItem>
   onDelete: (s: OutfitSuggestion) => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
-}> = ({ suggestions, profileName, isAdmin, onDelete, onPreview }) => {
+}> = ({ suggestions, profileName, isAdmin, allClothes, onDelete, onPreview }) => {
   const byDay = useMemo(() => {
     const map: Record<number, OutfitSuggestion> = {}
     suggestions.forEach((s) => {
@@ -804,6 +838,7 @@ const WeeklyView: React.FC<{
                 suggestion={s}
                 profileName={profileName}
                 isAdmin={isAdmin}
+                allClothes={allClothes}
                 onDelete={() => onDelete(s)}
                 onPreview={onPreview}
                 compact
@@ -824,6 +859,7 @@ interface SuggestionCardProps {
   suggestion: OutfitSuggestion
   profileName: (uid: string) => string
   isAdmin: boolean
+  allClothes: Record<string, ClothingItem>
   onDelete: () => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
   compact?: boolean
@@ -833,6 +869,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   suggestion: s,
   profileName,
   isAdmin,
+  allClothes,
   onDelete,
   onPreview,
   compact = false,
@@ -840,7 +877,6 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   const { message } = App.useApp()
   const [comment, setComment] = useState(s.comment ?? '')
   const [liked, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
-  const [items, setItems] = useState<Record<string, ClothingItem>>({})
   const [savingFeedback, setSavingFeedback] = useState(false)
 
   useEffect(() => {
@@ -848,34 +884,14 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     setLiked(s.liked ?? null)
   }, [s.id, s.comment, s.liked])
 
-  useEffect(() => {
-    if (s.clothingItemIds.length === 0) return
-    let cancelled = false
-    ;(async () => {
-      const map: Record<string, ClothingItem> = {}
-      for (let i = 0; i < s.clothingItemIds.length; i += 30) {
-        const chunk = s.clothingItemIds.slice(i, i + 30)
-        try {
-          const q = query(collection(db, 'clothes'), where(documentId(), 'in', chunk))
-          const snap = await getDocs(q)
-          snap.docs.forEach((d) => {
-            map[d.id] = { id: d.id, ...d.data() } as ClothingItem
-          })
-        } catch {
-          await Promise.all(
-            chunk.map(async (id) => {
-              const snap = await getDoc(doc(db, 'clothes', id))
-              if (snap.exists()) map[snap.id] = { id: snap.id, ...snap.data() } as ClothingItem
-            }),
-          )
-        }
-      }
-      if (!cancelled) setItems(map)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [s.id, s.clothingItemIds.join('|')])
+  // Üst seviyede yüklenmiş tüm dolaptan parçaları hızlıca seç — fetch yok
+  const items = useMemo(() => {
+    const map: Record<string, ClothingItem> = {}
+    s.clothingItemIds.forEach((id) => {
+      if (allClothes[id]) map[id] = allClothes[id]
+    })
+    return map
+  }, [s.clothingItemIds, allClothes])
 
   const saveFeedback = async (newLiked: 'yes' | 'no' | undefined, commentVal: string) => {
     setSavingFeedback(true)
