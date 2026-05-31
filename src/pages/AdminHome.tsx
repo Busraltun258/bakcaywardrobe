@@ -1,31 +1,70 @@
-import { collection, deleteDoc, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
+import {
+  CalendarOutlined,
+  CheckCircleFilled,
+  ClockCircleOutlined,
+  CloseCircleFilled,
+  CommentOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  HeartFilled,
+  InboxOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons'
+import {
+  App,
+  Avatar,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Row,
+  Skeleton,
+  Statistic,
+  Tabs,
+  Tag,
+} from 'antd'
+import dayjs from 'dayjs'
+import {
+  collection,
+  deleteDoc,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Navbar from '../components/Navbar'
+import AppLayout from '../components/AppLayout'
+import Lightbox from '../components/Lightbox'
+import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
+import { COLORS } from '../theme'
 import { ClothingItem, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 
 const AdminHome: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { message, modal } = App.useApp()
+
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
   const [profiles, setProfiles] = useState<UserProfile[]>([])
   const [reqCache, setReqCache] = useState<Record<string, OutfitRequest>>({})
   const [clothesCache, setClothesCache] = useState<Record<string, ClothingItem>>({})
   const [pendingRequests, setPendingRequests] = useState<OutfitRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lightboxItem, setLightboxItem] = useState<ClothingItem | null>(null)
 
-  // Gelen bekleyen talepleri dinle (admin tüm pending istekleri görür)
   useEffect(() => {
     if (!user) return
-    const q = query(
-      collection(db, 'outfitRequests'),
-      where('status', '==', 'pending')
-    )
+    const q = query(collection(db, 'outfitRequests'), where('status', '==', 'pending'))
     return onSnapshot(q, (snap) => {
-      const list = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as OutfitRequest))
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitRequest))
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       setPendingRequests(list)
     })
@@ -38,13 +77,28 @@ const AdminHome: React.FC = () => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion))
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       setSuggestions(list)
+      setLoading(false)
     })
   }, [user])
 
+  // Profilleri cache'le
   useEffect(() => {
     if (!user) return
+    const cacheKey = 'bk_profiles_cache_admin'
+    const TTL = 10 * 60 * 1000
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const { data, ts } = JSON.parse(cached)
+        if (Date.now() - ts < TTL) setProfiles(data)
+      }
+    } catch {}
     return onSnapshot(collection(db, 'profiles'), (snap) => {
-      setProfiles(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserProfile)))
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserProfile))
+      setProfiles(list)
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ data: list, ts: Date.now() }))
+      } catch {}
     })
   }, [user])
 
@@ -60,23 +114,29 @@ const AdminHome: React.FC = () => {
     setReqCache((prev) => ({ ...prev, [requestId]: { id: s.id, ...s.data() } as OutfitRequest }))
   }
 
+  // Batch load clothes — 'in' query ile tek seferde 30 id (Firestore index optimizasyonu)
   const loadClothes = async (ids: string[]) => {
     const need = ids.filter((id) => !clothesCache[id])
     if (!need.length) return
-    const entries = await Promise.all(
-      need.map(async (id) => {
-        const s = await getDoc(doc(db, 'clothes', id))
-        if (!s.exists()) return null
-        return { id: s.id, ...s.data() } as ClothingItem
-      })
-    )
-    setClothesCache((prev) => {
-      const next = { ...prev }
-      entries.forEach((c) => {
-        if (c) next[c.id] = c
-      })
-      return next
-    })
+    const newEntries: Record<string, ClothingItem> = {}
+    for (let i = 0; i < need.length; i += 30) {
+      const chunk = need.slice(i, i + 30)
+      try {
+        const q = query(collection(db, 'clothes'), where(documentId(), 'in', chunk))
+        const snap = await getDocs(q)
+        snap.docs.forEach((d) => {
+          newEntries[d.id] = { id: d.id, ...d.data() } as ClothingItem
+        })
+      } catch {
+        await Promise.all(
+          chunk.map(async (id) => {
+            const snap = await getDoc(doc(db, 'clothes', id))
+            if (snap.exists()) newEntries[snap.id] = { id: snap.id, ...snap.data() } as ClothingItem
+          }),
+        )
+      }
+    }
+    setClothesCache((prev) => ({ ...prev, ...newEntries }))
   }
 
   useEffect(() => {
@@ -88,10 +148,7 @@ const AdminHome: React.FC = () => {
   }, [suggestions.map((s) => s.id).join('|')])
 
   const rows = useMemo(() => {
-    return suggestions.map((s) => {
-      const r = reqCache[s.requestId]
-      return { s, r }
-    })
+    return suggestions.map((s) => ({ s, r: reqCache[s.requestId] }))
   }, [suggestions, reqCache])
 
   const stats = useMemo(() => {
@@ -103,272 +160,424 @@ const AdminHome: React.FC = () => {
   }, [suggestions])
 
   return (
-    <div style={styles.page}>
-      <Navbar />
-      <div style={styles.wrap}>
-        <h2 style={styles.h2}>🎨 Önerdiğim Kombinler</h2>
-        <p style={styles.sub}>Kullanıcılara önerdiğin kombinlerin ve geri bildirimleri burada.</p>
-
-        {/* İstatistikler */}
-        <div style={styles.statsRow}>
-          <div style={{ ...styles.statCard, borderLeft: '4px solid #4f46e5' }}>
-            <span style={styles.statNum}>{stats.total}</span>
-            <span style={styles.statLabel}>Toplam</span>
-          </div>
-          <div style={{ ...styles.statCard, borderLeft: '4px solid #22c55e' }}>
-            <span style={styles.statNum}>{stats.liked}</span>
-            <span style={styles.statLabel}>👍 Beğenildi</span>
-          </div>
-          <div style={{ ...styles.statCard, borderLeft: '4px solid #ef4444' }}>
-            <span style={styles.statNum}>{stats.disliked}</span>
-            <span style={styles.statLabel}>👎 Beğenilmedi</span>
-          </div>
-          <div style={{ ...styles.statCard, borderLeft: '4px solid #f59e0b' }}>
-            <span style={styles.statNum}>{stats.waiting}</span>
-            <span style={styles.statLabel}>⏳ Bekliyor</span>
-          </div>
+    <AppLayout>
+      <div className="bk-container-wide">
+        {/* Hero */}
+        <div style={styles.hero}>
+          <h1 style={styles.heroTitle}>
+            <RocketOutlined style={{ color: COLORS.primary, marginRight: 10 }} />
+            Stilist Paneli
+          </h1>
+          <p style={styles.heroSub}>Gelen istekleri yanıtla, önerilerini yönet</p>
         </div>
 
-        {/* Gelen talepler */}
-        <h3 style={{ fontSize: 18, margin: '0 0 10px', color: '#e2e2e2' }}>📬 Gelen Talepler</h3>
-        {pendingRequests.length === 0 ? (
-          <div style={styles.card}>
-            <p style={styles.muted}>Bekleyen talep yok.</p>
-          </div>
-        ) : (
-          pendingRequests.map((r) => {
-            const who = profileName(r.fromUid)
-            const time = new Date(r.createdAt).toLocaleString('tr-TR')
-            return (
-              <div key={r.id} style={styles.card}>
-                <div style={styles.cardHeader}>
-                  <p style={styles.meta}>
-                    <strong>{who}</strong> kombin önerisi istiyor
-                  </p>
-                  <span style={{ ...styles.badge, backgroundColor: '#f59e0b' }}>⏳ Bekliyor</span>
-                </div>
-                <p style={styles.time}>🕒 Created Time: {time}</p>
-                {r.requestDate && (
-                  <p style={{ fontSize: 13, color: '#6366f1', margin: '4px 0 0', fontWeight: 600 }}>
-                    📅 Kombin tarihi: {r.requestDate.split('-').reverse().join('.')}
-                  </p>
-                )}
-                {r.note ? <p style={{ fontSize: 14, color: '#ccc', margin: '6px 0 0' }}><strong>Not:</strong> {r.note}</p> : null}
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/kombin/yanit/${r.id}`)}
-                    style={styles.respondBtn}
-                  >
-                    👗 Öneri Hazırla
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.btnDeleteReq}
-                    onClick={async () => {
-                      if (!confirm('Bu talebi silmek istediğine emin misin?')) return
-                      try {
-                        await deleteDoc(doc(db, 'outfitRequests', r.id))
-                      } catch (e) {
-                        console.error(e)
-                        alert('Silinemedi.')
-                      }
-                    }}
-                  >
-                    🗑️ Talebi Sil
-                  </button>
-                </div>
-              </div>
-            )
-          })
-        )}
+        {/* Stats */}
+        <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={12} sm={6}>
+            <StatCard
+              title="Toplam"
+              value={stats.total}
+              icon={<ThunderboltOutlined />}
+              color={COLORS.primary}
+            />
+          </Col>
+          <Col xs={12} sm={6}>
+            <StatCard
+              title="Beğenildi"
+              value={stats.liked}
+              icon={<HeartFilled />}
+              color={COLORS.success}
+            />
+          </Col>
+          <Col xs={12} sm={6}>
+            <StatCard
+              title="Bekliyor"
+              value={stats.waiting}
+              icon={<ClockCircleOutlined />}
+              color={COLORS.warning}
+            />
+          </Col>
+          <Col xs={12} sm={6}>
+            <StatCard
+              title="Değişiklik"
+              value={stats.disliked}
+              icon={<CommentOutlined />}
+              color={COLORS.error}
+            />
+          </Col>
+        </Row>
 
-        {/* Öneri listesi */}
-        <h3 style={{ fontSize: 18, margin: '20px 0 10px', color: '#e2e2e2' }}>🎨 Önerdiğim Kombinler</h3>
-        {rows.length === 0 ? (
-          <div style={styles.card}>
-            <p style={styles.muted}>Henüz öneri yapmadın.</p>
-          </div>
-        ) : (
-          rows.map(({ s, r }) => {
-            const who = r ? profileName(r.fromUid) : '...'
-            const likedLabel =
-              s.liked === 'yes' ? '👍 Beğendi' : s.liked === 'no' ? '👎 Beğenmedi' : '⏳ Bekleniyor'
-            const likedColor =
-              s.liked === 'yes' ? '#22c55e' : s.liked === 'no' ? '#ef4444' : '#f59e0b'
-            const feedbackTime =
-              s.feedbackAt ? new Date(s.feedbackAt).toLocaleString('tr-TR') : null
-            const createdTime = new Date(s.createdAt).toLocaleString('tr-TR')
-
-            return (
-              <div key={s.id} style={styles.card}>
-                <div style={styles.cardHeader}>
-                  <p style={styles.meta}>
-                    <strong>{who}</strong> için öneri
-                  </p>
-                  <span style={{ ...styles.badge, backgroundColor: likedColor }}>{likedLabel}</span>
-                </div>
-
-                <p style={styles.time}>📅 {createdTime}</p>
-
-                <div style={styles.prevRow}>
-                  {(s.clothingItemIds ?? []).map((id) => {
-                    const c = clothesCache[id]
-                    return c ? (
-                      <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 80 }}>
-                        <img src={clothingItemImageSrc(c)} alt="" style={styles.thumb} />
-                        {c.description ? <span style={{ fontSize: 10, color: '#aaa', textAlign: 'center', lineHeight: 1.2 }}>{c.description}</span> : null}
-                      </div>
-                    ) : (
-                      <div key={id} style={styles.thumbPh} />
-                    )
-                  })}
-                </div>
-
-                {s.advisorNote ? (
-                  <p style={styles.comment}>
-                    <strong>Notun:</strong> {s.advisorNote}
-                  </p>
-                ) : null}
-
-                {s.comment ? (
-                  <p style={styles.comment}>
-                    <strong>Kullanıcı yorumu:</strong> {s.comment}
-                  </p>
-                ) : null}
-
-                {feedbackTime ? <p style={styles.time}>🕒 Geri bildirim: {feedbackTime}</p> : null}
-
-                {r ? (
-                  <p style={styles.smallMuted}>
-                    İstek notu: {r.note ? `"${r.note}"` : 'yok'}
-                  </p>
-                ) : (
-                  <p style={styles.smallMuted}>İstek yükleniyor…</p>
-                )}
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    style={styles.editBtn}
-                    onClick={() => navigate(`/kombin/duzenle/${s.id}`)}
-                  >
-                    ✏️ Düzenle
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.btnDeleteSugg}
-                    onClick={async () => {
-                      if (!confirm('Bu kombin önerisini silmek istediğine emin misin?')) return
-                      try {
-                        await deleteDoc(doc(db, 'outfitSuggestions', s.id))
-                      } catch (e) {
-                        console.error(e)
-                        alert('Silinemedi.')
-                      }
-                    }}
-                  >
-                    🗑️ Sil
-                  </button>
-                </div>
-              </div>
-            )
-          })
-        )}
+        {/* Tabs */}
+        <Tabs
+          defaultActiveKey="incoming"
+          size="large"
+          items={[
+            {
+              key: 'incoming',
+              label: (
+                <span>
+                  <InboxOutlined /> Gelen İstekler{' '}
+                  {pendingRequests.length > 0 && (
+                    <Tag color="warning" style={{ marginLeft: 6 }}>
+                      {pendingRequests.length}
+                    </Tag>
+                  )}
+                </span>
+              ),
+              children: (
+                <IncomingRequestsList
+                  requests={pendingRequests}
+                  profileName={profileName}
+                  onRespond={(r) => navigate(`/kombin/yanit/${r.id}`)}
+                  onDelete={(r) => {
+                    modal.confirm({
+                      title: 'Bu talebi silmek istediğine emin misin?',
+                      okText: 'Sil',
+                      okType: 'danger',
+                      cancelText: 'Vazgeç',
+                      centered: true,
+                      onOk: async () => {
+                        try {
+                          await deleteDoc(doc(db, 'outfitRequests', r.id))
+                          message.success('Silindi')
+                        } catch {
+                          message.error('Silinemedi')
+                        }
+                      },
+                    })
+                  }}
+                />
+              ),
+            },
+            {
+              key: 'suggestions',
+              label: (
+                <span>
+                  <ThunderboltOutlined /> Önerilerim ({rows.length})
+                </span>
+              ),
+              children: (
+                <SuggestionsList
+                  rows={rows}
+                  clothesCache={clothesCache}
+                  profileName={profileName}
+                  loading={loading}
+                  onPreview={(item) => setLightboxItem(item)}
+                  onEdit={(s) => navigate(`/kombin/duzenle/${s.id}`)}
+                  onDelete={(s) => {
+                    modal.confirm({
+                      title: 'Bu öneriyi silmek istediğine emin misin?',
+                      okText: 'Sil',
+                      okType: 'danger',
+                      cancelText: 'Vazgeç',
+                      centered: true,
+                      onOk: async () => {
+                        try {
+                          await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                          message.success('Silindi')
+                        } catch {
+                          message.error('Silinemedi')
+                        }
+                      },
+                    })
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
       </div>
+
+      <Lightbox
+        open={!!lightboxItem}
+        onClose={() => setLightboxItem(null)}
+        imageKey={lightboxItem?.id}
+        src={lightboxItem ? clothingItemImageSrc(lightboxItem) : ''}
+        title={lightboxItem?.label}
+        description={lightboxItem?.description}
+      />
+    </AppLayout>
+  )
+}
+
+const StatCard: React.FC<{
+  title: string
+  value: number
+  icon: React.ReactNode
+  color: string
+}> = ({ title, value, icon, color }) => (
+  <Card style={{ height: '100%' }} bodyStyle={{ padding: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          background: `${color}1f`,
+          color,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 18,
+        }}
+      >
+        {icon}
+      </div>
+      <Statistic
+        title={<span style={{ color: COLORS.textSecondary, fontSize: 12 }}>{title}</span>}
+        value={value}
+        valueStyle={{ fontSize: 22, fontWeight: 700, color: COLORS.text }}
+      />
     </div>
+  </Card>
+)
+
+const IncomingRequestsList: React.FC<{
+  requests: OutfitRequest[]
+  profileName: (uid: string) => string
+  onRespond: (r: OutfitRequest) => void
+  onDelete: (r: OutfitRequest) => void
+}> = ({ requests, profileName, onRespond, onDelete }) => {
+  if (requests.length === 0) {
+    return (
+      <Card>
+        <Empty
+          description={
+            <span style={{ color: COLORS.textSecondary }}>Bekleyen talep yok 🎉</span>
+          }
+        />
+      </Card>
+    )
+  }
+  return (
+    <Row gutter={[12, 12]}>
+      {requests.map((r) => (
+        <Col xs={24} sm={12} lg={8} key={r.id}>
+          <Card
+            actions={[
+              <Button
+                key="r"
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                onClick={() => onRespond(r)}
+              >
+                Öner
+              </Button>,
+              <Button
+                key="d"
+                danger
+                type="text"
+                icon={<DeleteOutlined />}
+                onClick={() => onDelete(r)}
+              />,
+            ]}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <Avatar size={40} style={{ background: COLORS.gradient }}>
+                {profileName(r.fromUid)[0]?.toUpperCase()}
+              </Avatar>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: COLORS.text }}>{profileName(r.fromUid)}</div>
+                <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                  {dayjs(r.createdAt).format('DD MMM HH:mm')}
+                </div>
+              </div>
+              <Tag color="warning" icon={<ClockCircleOutlined />} style={{ marginRight: 0 }}>
+                Bekliyor
+              </Tag>
+            </div>
+            {r.requestDate && (
+              <p style={{ fontSize: 12, color: COLORS.primary, margin: '0 0 6px' }}>
+                <CalendarOutlined style={{ marginRight: 4 }} />
+                {dayjs(r.requestDate).format('DD MMMM YYYY')}
+              </p>
+            )}
+            {r.note ? (
+              <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: 0, fontStyle: 'italic' }}>
+                "{r.note}"
+              </p>
+            ) : (
+              <p style={{ fontSize: 12, color: COLORS.textMuted, margin: 0 }}>Not eklenmedi</p>
+            )}
+          </Card>
+        </Col>
+      ))}
+    </Row>
+  )
+}
+
+const SuggestionsList: React.FC<{
+  rows: { s: OutfitSuggestion; r: OutfitRequest | undefined }[]
+  clothesCache: Record<string, ClothingItem>
+  profileName: (uid: string) => string
+  loading: boolean
+  onPreview: (item: ClothingItem) => void
+  onEdit: (s: OutfitSuggestion) => void
+  onDelete: (s: OutfitSuggestion) => void
+}> = ({ rows, clothesCache, profileName, loading, onPreview, onEdit, onDelete }) => {
+  if (loading) {
+    return (
+      <Card>
+        <Skeleton active />
+      </Card>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <Empty
+          description={
+            <span style={{ color: COLORS.textSecondary }}>Henüz öneri yapmadın</span>
+          }
+        />
+      </Card>
+    )
+  }
+  return (
+    <Row gutter={[12, 12]} align="stretch">
+      {rows.map(({ s, r }) => {
+        const who = r ? profileName(r.fromUid) : '...'
+        const likedTag =
+          s.liked === 'yes' ? (
+            <Tag color="success" icon={<CheckCircleFilled />}>
+              Beğenildi
+            </Tag>
+          ) : s.liked === 'no' ? (
+            <Tag color="error" icon={<CloseCircleFilled />}>
+              Değişiklik
+            </Tag>
+          ) : (
+            <Tag color="warning" icon={<ClockCircleOutlined />}>
+              Bekliyor
+            </Tag>
+          )
+        return (
+          <Col xs={24} md={12} key={s.id} style={{ display: 'flex' }}>
+            <Card
+              style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
+              bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+              actions={[
+                <Button
+                  key="e"
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={() => onEdit(s)}
+                >
+                  Düzenle
+                </Button>,
+                <Button
+                  key="d"
+                  danger
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  onClick={() => onDelete(s)}
+                />,
+              ]}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <Avatar size={36} style={{ background: COLORS.gradient }}>
+                  {who[0]?.toUpperCase()}
+                </Avatar>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: COLORS.text }}>{who}</div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                    {dayjs(s.createdAt).format('DD MMM HH:mm')}
+                  </div>
+                </div>
+                {likedTag}
+              </div>
+
+              <div style={styles.suggThumbs}>
+                {(s.clothingItemIds ?? []).map((id) => {
+                  const c = clothesCache[id]
+                  if (!c) {
+                    return (
+                      <div key={id} style={styles.thumbCol}>
+                        <div
+                          className="skeleton"
+                          style={{ width: 72, height: 72, borderRadius: 10 }}
+                        />
+                      </div>
+                    )
+                  }
+                  const labelText = c.label || c.description
+                  return (
+                    <div key={id} style={styles.thumbCol}>
+                      <button
+                        type="button"
+                        onClick={() => onPreview(c)}
+                        style={styles.thumbBtn}
+                        aria-label="Görseli büyüt"
+                      >
+                        <SmartImage
+                          cacheKey={c.id}
+                          src={clothingItemImageSrc(c)}
+                          style={{ width: 72, height: 72, borderRadius: 10 }}
+                        />
+                      </button>
+                      {labelText && <span style={styles.thumbLabel}>{labelText}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {s.advisorNote && (
+                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '12px 0 4px' }}>
+                  <strong style={{ color: COLORS.text }}>Notum:</strong> {s.advisorNote}
+                </p>
+              )}
+              {s.comment && (
+                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '4px 0 0' }}>
+                  <strong style={{ color: COLORS.text }}>Yanıt:</strong> {s.comment}
+                </p>
+              )}
+              <div style={{ flex: 1 }} />
+            </Card>
+          </Col>
+        )
+      })}
+    </Row>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#0f0f14' },
-  wrap: { maxWidth: 700, margin: '0 auto', padding: 16 },
-  h2: { margin: '8px 0 4px', fontSize: 26, color: '#fff' },
-  sub: { color: '#888', fontSize: 14, marginBottom: 16 },
-  statsRow: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-    gap: 10,
-    marginBottom: 20,
+  hero: { padding: '4px 0 16px' },
+  heroTitle: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 700,
+    color: COLORS.text,
+    letterSpacing: '-0.6px',
   },
-  statCard: {
-    background: '#1a1a24',
-    borderRadius: 12,
-    padding: '14px 16px',
-    border: '1px solid rgba(255,255,255,0.06)',
+  heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
+  suggThumbs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  thumbCol: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  statNum: { fontSize: 28, fontWeight: 700, color: '#fff' },
-  statLabel: { fontSize: 13, color: '#888' },
-  card: {
-    background: '#1a1a24',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
-    border: '1px solid rgba(255,255,255,0.06)',
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
+    flexDirection: 'column' as const,
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 4,
+    maxWidth: 80,
   },
-  meta: { margin: 0, fontSize: 15, color: '#e2e2e2' },
-  badge: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '4px 10px',
-    borderRadius: 20,
-  },
-  muted: { color: '#666', fontSize: 14, margin: 0 },
-  smallMuted: { color: '#555', fontSize: 12, margin: '10px 0 0' },
-  prevRow: { display: 'flex', gap: 6, flexWrap: 'wrap', margin: '10px 0' },
-  thumb: { width: 80, height: 80, objectFit: 'cover', borderRadius: 10 },
-  thumbPh: { width: 80, height: 80, background: '#2a2a3a', borderRadius: 10 },
-  comment: { margin: '8px 0 0', fontSize: 14, color: '#ccc' },
-  time: { margin: '4px 0 0', fontSize: 12, color: '#666' },
-  respondBtn: {
-    marginTop: 10,
-    padding: '10px 18px',
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    color: '#fff',
+  thumbBtn: {
+    padding: 0,
     border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
     borderRadius: 10,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontSize: 14,
+    overflow: 'hidden',
+    lineHeight: 0,
   },
-  btnDeleteReq: {
-    padding: '10px 18px',
-    background: 'rgba(239,68,68,0.12)',
-    border: '1px solid rgba(239,68,68,0.25)',
-    borderRadius: 10,
-    cursor: 'pointer',
-    fontSize: 14,
-    color: '#f87171',
-  },
-  editBtn: {
-    padding: '8px 14px',
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    border: 'none',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: 600,
-    flex: 1,
-  },
-  btnDeleteSugg: {
-    padding: '8px 14px',
-    background: 'rgba(239,68,68,0.12)',
-    border: '1px solid rgba(239,68,68,0.25)',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 13,
-    color: '#f87171',
-    flex: 1,
+  thumbLabel: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    textAlign: 'center' as const,
+    lineHeight: 1.25,
+    maxWidth: 80,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
   },
 }
 

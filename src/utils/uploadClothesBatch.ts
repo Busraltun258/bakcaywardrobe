@@ -68,8 +68,14 @@ export async function uploadClothesBatch(
   for (let i = 0; i < toProcess.length; i++) {
     const file = toProcess[i]
     try {
-      const imageBase64 = await compressImageToBase64(file, 800, 0.75)
-      if (imageBase64.length > 1_500_000) {
+      // Boyut yüksek tutulur (lightbox'ta detay görmek için), WebP @ 0.82 ile
+      // genelde 200-500 KB civarı çıkar — Firestore'un 1 MB doc limitinin altında.
+      let imageBase64 = await compressImageToBase64(file, 1200, 0.82)
+      // Eğer çok büyükse kalite düşürerek yeniden dene (renkli/karmaşık resimler için)
+      if (imageBase64.length > 900_000) {
+        imageBase64 = await compressImageToBase64(file, 1000, 0.75)
+      }
+      if (imageBase64.length > 900_000) {
         result.skippedOversized++
         continue
       }

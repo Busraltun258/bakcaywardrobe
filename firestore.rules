@@ -2,16 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isAdmin() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     match /profiles/{uid} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null && request.auth.uid == uid;
     }
 
     match /clothes/{itemId} {
+      // Sahip + admin okuyabilir; yazma sadece sahip + admin (admin de düzenleyebilsin diye)
       allow read: if request.auth != null;
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null
-        && resource.data.ownerId == request.auth.uid;
+        && (resource.data.ownerId == request.auth.uid || isAdmin());
     }
 
     match /outfitRequests/{rid} {
@@ -24,6 +31,29 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null;
+    }
+
+    // Admin'in hazırladığı taslak kombinler
+    match /outfitDrafts/{did} {
+      allow read: if request.auth != null;
+      allow create: if isAdmin();
+      allow update, delete: if request.auth != null
+        && resource.data.advisorUid == request.auth.uid;
+    }
+
+    // Kullanıcı kategori sıralaması — sadece sahibi yazabilir, herkes okuyabilir
+    match /wardrobeOrders/{uid} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Kıyafet günlüğü — kullanıcı kendi günlüğünü yazar, admin de okuyabilir
+    match /outfitDiary/{eid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userUid == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && resource.data.userUid == request.auth.uid;
     }
 
     match /suggestionComments/{cid} {

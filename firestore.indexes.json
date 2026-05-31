@@ -1,0 +1,54 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "clothes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "category", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "outfitSuggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requesterUid", "order": "ASCENDING" },
+        { "fieldPath": "liked", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "outfitDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "wardrobeOwnerUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "outfitDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "advisorUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "outfitDiary",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userUid", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "outfitSuggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requesterUid", "order": "ASCENDING" },
+        { "fieldPath": "liked", "order": "ASCENDING" },
+        { "fieldPath": "feedbackAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

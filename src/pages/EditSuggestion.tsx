@@ -1,22 +1,55 @@
 import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    updateDoc,
+  ArrowLeftOutlined,
+  CheckOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  WarningFilled,
+} from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Input,
+  Row,
+  Segmented,
+  Skeleton,
+  Tag,
+} from 'antd'
+import StickySubmitBar from '../components/StickySubmitBar'
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Navbar from '../components/Navbar'
+import AppLayout from '../components/AppLayout'
+import Lightbox from '../components/Lightbox'
+import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
-import { CATEGORIES, ClothingItem, OutfitRequest, OutfitSuggestion } from '../types'
+import { COLORS } from '../theme'
+import {
+  CATEGORIES,
+  ClothingItem,
+  OutfitRequest,
+  OutfitSuggestion,
+} from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 
 const EditSuggestion: React.FC = () => {
   const { suggestionId } = useParams<{ suggestionId: string }>()
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
+  const { message } = App.useApp()
   const [suggestion, setSuggestion] = useState<OutfitSuggestion | null>(null)
   const [request, setRequest] = useState<OutfitRequest | null>(null)
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([])
@@ -25,7 +58,11 @@ const EditSuggestion: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [catFilter, setCatFilter] = useState<string | 'all'>('all')
   const [loadErr, setLoadErr] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [enlarged, setEnlarged] = useState<ClothingItem | null>(null)
+  const [ownerHint, setOwnerHint] = useState<string | null>(null)
 
+  // 1) Öneriyi çek + requesterUid'i hint olarak yakala (dolabı erken yüklemek için)
   useEffect(() => {
     if (!suggestionId || !user) return
     ;(async () => {
@@ -42,31 +79,60 @@ const EditSuggestion: React.FC = () => {
       setSuggestion(s)
       setSelected(new Set(s.clothingItemIds))
       setNote(s.advisorNote ?? '')
+      if (s.requesterUid) setOwnerHint(s.requesterUid)
 
-      // İsteği yükle
       const reqSnap = await getDoc(doc(db, 'outfitRequests', s.requestId))
       if (reqSnap.exists()) {
-        setRequest({ id: reqSnap.id, ...reqSnap.data() } as OutfitRequest)
+        const r = { id: reqSnap.id, ...reqSnap.data() } as OutfitRequest
+        setRequest(r)
+        if (!s.requesterUid && r.wardrobeOwnerUid) setOwnerHint(r.wardrobeOwnerUid)
       }
     })()
-  }, [suggestionId, user])
+  }, [suggestionId, user, isAdmin])
 
-  // Dolabı yükle
+  // 2) ownerHint geldiğinde dolabı paralel çek — request'i beklemiyoruz
   useEffect(() => {
-    if (!request?.wardrobeOwnerUid) return
+    if (!ownerHint) return
+    const ownerUid = ownerHint
+    const cacheKey = `bk_clothes_all_${ownerUid}`
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const list = JSON.parse(cached) as ClothingItem[]
+        setWardrobe(list)
+        setLoading(false)
+      }
+    } catch {}
     ;(async () => {
-      const snap = await getDocs(collection(db, 'clothes'))
-      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
-      const list = mapped.filter((c) => c.ownerId === request.wardrobeOwnerUid)
+      const q = query(collection(db, 'clothes'), where('ownerId', '==', ownerUid))
+      const snap = await getDocs(q)
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(list))
+      } catch {}
       setWardrobe(list)
+      setLoading(false)
     })()
-  }, [request?.wardrobeOwnerUid])
+  }, [ownerHint])
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: wardrobe.length }
+    CATEGORIES.forEach((c) => {
+      counts[c.key] = wardrobe.filter((w) => w.category === c.key).length
+    })
+    return counts
+  }, [wardrobe])
 
   const filtered = useMemo(() => {
     if (catFilter === 'all') return wardrobe
     return wardrobe.filter((c) => c.category === catFilter)
   }, [wardrobe, catFilter])
+
+  const selectedItems = useMemo(
+    () => Array.from(selected).map((id) => wardrobe.find((w) => w.id === id)).filter(Boolean) as ClothingItem[],
+    [selected, wardrobe],
+  )
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -79,7 +145,7 @@ const EditSuggestion: React.FC = () => {
 
   const submit = async () => {
     if (!suggestion || selected.size === 0) {
-      alert('En az bir parça seç.')
+      message.warning('En az bir parça seç.')
       return
     }
     setSaving(true)
@@ -87,16 +153,16 @@ const EditSuggestion: React.FC = () => {
       await updateDoc(doc(db, 'outfitSuggestions', suggestion.id), {
         clothingItemIds: Array.from(selected),
         advisorNote: note.trim(),
-        liked: null,         // Feedback sıfırla — user tekrar değerlendirecek
+        liked: null,
         comment: '',
         feedbackAt: null,
         editedAt: Date.now(),
       })
-      alert('✅ Öneri güncellendi! Kullanıcı tekrar değerlendirecek.')
+      message.success('Öneri güncellendi! Kullanıcı tekrar değerlendirecek.')
       navigate('/home', { replace: true })
     } catch (e) {
       console.error(e)
-      alert('Kaydedilemedi.')
+      message.error('Kaydedilemedi.')
     } finally {
       setSaving(false)
     }
@@ -104,153 +170,352 @@ const EditSuggestion: React.FC = () => {
 
   if (loadErr) {
     return (
-      <div style={styles.page}>
-        <Navbar />
-        <p style={styles.center}>{loadErr}</p>
-        <button type="button" style={styles.secondary} onClick={() => navigate('/home')}>Geri dön</button>
-      </div>
+      <AppLayout>
+        <div className="bk-container">
+          <Alert
+            type="error"
+            message={loadErr}
+            action={
+              <Button onClick={() => navigate('/home')} size="small">
+                Geri Dön
+              </Button>
+            }
+          />
+        </div>
+      </AppLayout>
     )
   }
 
   if (!suggestion) {
     return (
-      <div style={styles.page}>
-        <Navbar />
-        <p style={styles.center}>Yükleniyor…</p>
-      </div>
+      <AppLayout>
+        <div className="bk-container">
+          <Skeleton active />
+        </div>
+      </AppLayout>
     )
   }
 
-  return (
-    <div style={styles.page}>
-      <Navbar />
-      <div style={styles.wrap}>
-        <h2 style={styles.h2}>✏️ Öneriyi Düzenle</h2>
-        <p style={styles.sub}>
-          Kullanıcı bu kombini beğenmedi. Parçaları değiştirip tekrar gönderebilirsin.
-        </p>
+  const segOptions = [
+    { label: `Tümü (${categoryCounts.all})`, value: 'all' },
+    ...CATEGORIES.map((c) => ({
+      label: `${c.emoji} ${categoryCounts[c.key] ?? 0}`,
+      value: c.key,
+    })),
+  ]
 
-        {suggestion.comment && (
-          <div style={styles.feedbackBox}>
-            <p style={{ margin: 0, fontSize: 14, color: '#f87171' }}>
-              <strong>👎 Kullanıcı yorumu:</strong> {suggestion.comment}
-            </p>
+  const selectedPanel = (
+    <Card
+      title={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600 }}>Seçili Parçalar</span>
+          <Badge count={selected.size} showZero color={COLORS.primary} />
+        </div>
+      }
+      style={{ marginBottom: 12 }}
+      bodyStyle={{ padding: 12 }}
+    >
+      {request?.weather && (
+        <div style={styles.weatherStrip}>
+          <span style={{ fontSize: 22 }}>{request.weather.icon}</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
+              {request.weather.temp}°C · {request.weather.description}
+            </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+              📍 {request.weather.district ? `${request.weather.district}, ` : ''}
+              {request.weather.city}
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        <div style={styles.tabs}>
-          <button
-            type="button"
-            style={{ ...styles.tab, ...(catFilter === 'all' ? styles.tabOn : {}) }}
-            onClick={() => setCatFilter('all')}
-          >
-            Tümü
-          </button>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              style={{ ...styles.tab, ...(catFilter === c.key ? styles.tabOn : {}) }}
-              onClick={() => setCatFilter(c.key)}
-            >
-              {c.emoji}
-            </button>
+      {suggestion.comment && (
+        <Alert
+          type="error"
+          showIcon
+          icon={<WarningFilled />}
+          message={<strong>Geri bildirim</strong>}
+          description={`"${suggestion.comment}"`}
+          style={{ marginBottom: 10 }}
+        />
+      )}
+
+      {selectedItems.length === 0 ? (
+        <Empty
+          description={<span style={{ color: COLORS.textMuted, fontSize: 12 }}>Henüz seçili yok</span>}
+          imageStyle={{ height: 40 }}
+        />
+      ) : (
+        <div style={styles.selectedRow}>
+          {selectedItems.map((c) => (
+            <div key={c.id} style={styles.selThumbWrap}>
+              <button
+                type="button"
+                onClick={() => toggle(c.id)}
+                style={styles.selThumbBtn}
+                title="Tıkla — çıkar"
+              >
+                <SmartImage
+                  cacheKey={c.id}
+                  src={clothingItemImageSrc(c)}
+                  style={{ width: 56, height: 56, borderRadius: 8 }}
+                />
+                <span style={styles.selRemove}>×</span>
+              </button>
+            </div>
           ))}
         </div>
+      )}
 
+      <Input.TextArea
+        placeholder="Not (isteğe bağlı)…"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        style={{ marginTop: 12 }}
+      />
+    </Card>
+  )
+
+  const wardrobePanel = (
+    <>
+      <div style={{ marginBottom: 12, overflowX: 'auto' }}>
+        <Segmented
+          value={catFilter}
+          onChange={(v) => setCatFilter(v as string)}
+          options={segOptions}
+          block
+        />
+      </div>
+
+      {loading ? (
         <div style={styles.grid}>
-          {filtered.length === 0 ? (
-            <p style={styles.empty}>Bu kategoride parça yok.</p>
-          ) : (
-            filtered.map((item) => (
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 12 }} />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <Empty description="Bu kategoride parça yok" />
+      ) : (
+        <div style={styles.grid}>
+          {filtered.map((item) => {
+            const isSelected = selected.has(item.id)
+            return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => toggle(item.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setEnlarged(item)
+                }}
                 style={{
                   ...styles.cell,
-                  ...(selected.has(item.id) ? styles.cellOn : {}),
+                  ...(isSelected ? styles.cellOn : {}),
                 }}
               >
-                <img src={clothingItemImageSrc(item)} alt="" style={styles.img} loading="lazy" />
-                {item.label ? <span style={styles.labelTag}>{item.label}</span> : null}
-                {selected.has(item.id) ? <span style={styles.check}>✓</span> : null}
+                <SmartImage
+                  cacheKey={item.id}
+                  src={clothingItemImageSrc(item)}
+                  style={{ width: '100%', height: '100%' }}
+                />
+                {item.label && <span style={styles.labelTag}>{item.label}</span>}
+                {isSelected && (
+                  <div style={styles.check}>
+                    <CheckOutlined style={{ fontSize: 14 }} />
+                  </div>
+                )}
               </button>
-            ))
-          )}
+            )
+          })}
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: COLORS.textMuted, margin: '8px 0 0' }}>
+        💡 Sağ tık ile büyütüp detayını görebilirsin
+      </p>
+    </>
+  )
+
+  return (
+    <AppLayout>
+      <div className="bk-container">
+        <div style={{ marginBottom: 8 }}>
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate('/home')}
+            style={{ color: COLORS.textSecondary }}
+          >
+            Geri
+          </Button>
         </div>
 
-        <textarea
-          placeholder="Not (isteğe bağlı)…"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          style={styles.textarea}
-          rows={3}
-        />
-        <p style={styles.count}>{selected.size} parça seçildi</p>
-        <button type="button" style={styles.primary} onClick={submit} disabled={saving}>
-          {saving ? 'Güncelleniyor…' : '✅ Öneriyi Güncelle'}
-        </button>
-        <button type="button" style={styles.secondary} onClick={() => navigate('/home')}>
-          Vazgeç
-        </button>
+        <h1 style={styles.heroTitle}>
+          Öneriyi Düzenle {request?.requestType === 'weekly' && <Tag color="purple">5 gün</Tag>}
+        </h1>
+        <p style={styles.heroSub}>Parçaları değiştirip tekrar gönderebilirsin</p>
+
+        <Row gutter={[14, 14]}>
+          <Col xs={24} lg={10}>
+            <div style={styles.stickyCol}>{selectedPanel}</div>
+          </Col>
+          <Col xs={24} lg={14}>
+            {wardrobePanel}
+          </Col>
+        </Row>
       </div>
-    </div>
+
+      <StickySubmitBar>
+        <Badge count={selected.size} showZero color={COLORS.primary}>
+          <span style={{ color: COLORS.text, fontWeight: 600 }}>Seçili parça</span>
+        </Badge>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          size="large"
+          onClick={submit}
+          loading={saving}
+          disabled={selected.size === 0}
+        >
+          {saving ? 'Güncelleniyor…' : 'Güncelle'}
+        </Button>
+      </StickySubmitBar>
+
+      <Card style={{ marginTop: 20, background: 'rgba(255,255,255,0.02)' }} bodyStyle={{ padding: 12 }}>
+        <Button block type="text" onClick={() => navigate('/home')} style={{ color: COLORS.textMuted }}>
+          Vazgeç
+        </Button>
+      </Card>
+
+      <Lightbox
+        open={!!enlarged}
+        onClose={() => setEnlarged(null)}
+        imageKey={enlarged?.id}
+        src={enlarged ? clothingItemImageSrc(enlarged) : ''}
+        title={enlarged?.label}
+        description={enlarged?.description}
+        actions={
+          enlarged && (
+            <Button
+              type={selected.has(enlarged.id) ? 'default' : 'primary'}
+              icon={selected.has(enlarged.id) ? <CheckOutlined /> : <PlusOutlined />}
+              onClick={() => {
+                toggle(enlarged.id)
+                setEnlarged(null)
+              }}
+              size="large"
+              block
+            >
+              {selected.has(enlarged.id) ? 'Seçildi — Çıkar' : 'Kombine Ekle'}
+            </Button>
+          )
+        }
+      />
+    </AppLayout>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#0f0f14' },
-  wrap: { maxWidth: 640, margin: '0 auto', padding: '16px' },
-  h2: { margin: '8px 0 4px', fontSize: 22, color: '#fff' },
-  sub: { color: '#888', fontSize: 14, marginBottom: 12 },
-  center: { textAlign: 'center', padding: 24, color: '#888' },
-  feedbackBox: {
-    background: 'rgba(239,68,68,0.1)',
-    border: '1px solid rgba(239,68,68,0.25)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
+  heroTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 700,
+    color: COLORS.text,
+    letterSpacing: '-0.4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
   },
-  tabs: { display: 'flex', flexWrap: 'wrap', gap: 6, margin: '12px 0' },
-  tab: {
-    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.15)',
-    background: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: '6px 10px',
-    cursor: 'pointer', fontSize: 13, color: '#ccc',
+  heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
+  stickyCol: { position: 'sticky' as const, top: 12 },
+  weatherStrip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 10px',
+    borderRadius: 10,
+    background: 'rgba(124,140,255,0.10)',
+    border: `1px solid ${COLORS.border}`,
+    marginBottom: 10,
   },
-  tabOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.2)', color: '#fff' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 },
+  selectedRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  selThumbWrap: { position: 'relative' as const },
+  selThumbBtn: {
+    position: 'relative' as const,
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 8,
+    overflow: 'visible',
+    lineHeight: 0,
+  },
+  selRemove: {
+    position: 'absolute' as const,
+    top: -6,
+    right: -6,
+    background: COLORS.error,
+    color: '#fff',
+    width: 18,
+    height: 18,
+    borderRadius: '50%',
+    fontSize: 13,
+    lineHeight: '18px',
+    textAlign: 'center' as const,
+    fontWeight: 700,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+    gap: 8,
+  },
   cell: {
-    position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'hidden',
-    borderWidth: 3, borderStyle: 'solid', borderColor: 'transparent',
-    padding: 0, cursor: 'pointer', background: '#1a1a24',
+    position: 'relative' as const,
+    aspectRatio: '1',
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: '2px solid transparent',
+    padding: 0,
+    cursor: 'pointer',
+    background: COLORS.bgCard,
+    transition: 'all 0.15s ease',
   },
-  cellOn: { borderColor: '#818cf8' },
-  img: { width: '100%', height: '100%', objectFit: 'cover' },
+  cellOn: {
+    borderColor: COLORS.primary,
+    boxShadow: `0 0 0 4px rgba(124, 140, 255, 0.18)`,
+  },
   labelTag: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)',
-    color: '#fff', fontSize: 10, padding: '3px 6px', textAlign: 'center',
-    overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: 'rgba(0,0,0,0.75)',
+    color: '#fff',
+    fontSize: 10,
+    padding: '3px 6px',
+    textAlign: 'center' as const,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap' as const,
+    textOverflow: 'ellipsis',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
   },
   check: {
-    position: 'absolute', top: 4, right: 4, background: '#6366f1', color: '#fff',
-    width: 24, height: 24, borderRadius: '50%', fontSize: 14, lineHeight: '24px', textAlign: 'center',
+    position: 'absolute' as const,
+    top: 6,
+    right: 6,
+    background: COLORS.primary,
+    color: '#fff',
+    width: 26,
+    height: 26,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 4px 10px rgba(124,140,255,0.4)',
   },
-  textarea: {
-    width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(255,255,255,0.05)', color: '#fff', padding: 10, fontSize: 14, boxSizing: 'border-box',
-  },
-  count: { fontSize: 13, color: '#888' },
-  primary: {
-    width: '100%', marginTop: 8, padding: 14,
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    color: '#fff', border: 'none', borderRadius: 12, fontWeight: 600, cursor: 'pointer',
-  },
-  secondary: {
-    width: '100%', marginTop: 8, padding: 10,
-    background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
-  },
-  empty: { gridColumn: '1 / -1', textAlign: 'center', color: '#666' },
 }
 
 export default EditSuggestion

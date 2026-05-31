@@ -1,40 +1,91 @@
 import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    updateDoc,
-    where,
+  ArrowLeftOutlined,
+  CalendarOutlined,
+  CheckOutlined,
+  FolderOpenOutlined,
+  PlusOutlined,
+  SendOutlined,
+} from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Input,
+  Modal,
+  Radio,
+  Segmented,
+  Skeleton,
+  Tag,
+} from 'antd'
+import StickySubmitBar from '../components/StickySubmitBar'
+import dayjs from 'dayjs'
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import Navbar from '../components/Navbar'
+import AppLayout from '../components/AppLayout'
+import Lightbox from '../components/Lightbox'
+import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
-import { CATEGORIES, ClothingItem, OutfitRequest } from '../types'
+import { COLORS } from '../theme'
+import {
+  CATEGORIES,
+  ClothingItem,
+  OCCASIONS,
+  OutfitDraft,
+  OutfitRequest,
+  WEEKDAYS,
+} from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import {
+  sortByCustomOrder,
+  subscribeWardrobeOrders,
+  WardrobeOrders,
+} from '../utils/wardrobeOrder'
 
 const RespondOutfit: React.FC = () => {
   const { requestId } = useParams<{ requestId: string }>()
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
+  const { message } = App.useApp()
   const backPath = isAdmin ? '/home' : '/kombin'
+
   const [req, setReq] = useState<OutfitRequest | null>(null)
   const [loadErr, setLoadErr] = useState('')
   const [wardrobe, setWardrobe] = useState<ClothingItem[]>([])
+  const [orders, setOrders] = useState<WardrobeOrders>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [catFilter, setCatFilter] = useState<string | 'all'>('all')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Haftalık talep için: hangi günü dolduruyor
+  const isWeekly = req?.requestType === 'weekly'
+  const [dayIndex, setDayIndex] = useState<number>(0)
+
+  // Taslak desteği
+  const [drafts, setDrafts] = useState<OutfitDraft[]>([])
+  const [draftPickerOpen, setDraftPickerOpen] = useState(false)
 
   useEffect(() => {
     if (!requestId || !user) return
     ;(async () => {
       const snap = await getDoc(doc(db, 'outfitRequests', requestId))
-      if (!snap.exists) {
+      if (!snap.exists()) {
         setLoadErr('İstek bulunamadı.')
         return
       }
@@ -43,44 +94,84 @@ const RespondOutfit: React.FC = () => {
         setLoadErr('Bu istek sana ait değil.')
         return
       }
-      if (data.status !== 'pending') {
+      // Haftalık için status 'pending' olmasa bile gün ekleyebilmek için izin ver
+      if (data.requestType !== 'weekly' && data.status !== 'pending') {
         setLoadErr('Bu istek zaten yanıtlanmış.')
         return
       }
       setReq(data)
     })()
-  }, [requestId, user])
+  }, [requestId, user, isAdmin])
 
+  // Sahip kullanıcının Firestore sıralamasını dinle
+  useEffect(() => {
+    if (!req?.wardrobeOwnerUid) return
+    return subscribeWardrobeOrders(req.wardrobeOwnerUid, setOrders)
+  }, [req?.wardrobeOwnerUid])
+
+  // Dolap
   useEffect(() => {
     if (!req?.wardrobeOwnerUid) return
     const ownerUid = req.wardrobeOwnerUid
     const cacheKey = `bk_clothes_all_${ownerUid}`
 
-    // Önbellekten anında göster
     try {
       const cached = localStorage.getItem(cacheKey)
       if (cached) {
         const list = JSON.parse(cached) as ClothingItem[]
-        list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
         setWardrobe(list)
+        setLoading(false)
       }
     } catch {}
 
-    // Sadece o kullanıcının kıyafetlerini çek (tüm koleksiyonu değil)
     ;(async () => {
       const q = query(collection(db, 'clothes'), where('ownerId', '==', ownerUid))
       const snap = await getDocs(q)
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
-      list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-      try { localStorage.setItem(cacheKey, JSON.stringify(list)) } catch {}
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(list))
+      } catch {}
       setWardrobe(list)
+      setLoading(false)
     })()
   }, [req?.wardrobeOwnerUid])
 
+  // Bu kullanıcı için hazırlanmış taslakları çek (admin için)
+  useEffect(() => {
+    if (!req?.wardrobeOwnerUid || !isAdmin) return
+    ;(async () => {
+      const q = query(
+        collection(db, 'outfitDrafts'),
+        where('wardrobeOwnerUid', '==', req.wardrobeOwnerUid),
+      )
+      const snap = await getDocs(q)
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitDraft))
+      list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      setDrafts(list)
+    })()
+  }, [req?.wardrobeOwnerUid, isAdmin])
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: wardrobe.length }
+    CATEGORIES.forEach((c) => {
+      counts[c.key] = wardrobe.filter((w) => w.category === c.key).length
+    })
+    return counts
+  }, [wardrobe])
+
   const filtered = useMemo(() => {
-    if (catFilter === 'all') return wardrobe
-    return wardrobe.filter((c) => c.category === catFilter)
-  }, [wardrobe, catFilter])
+    const base = catFilter === 'all' ? wardrobe : wardrobe.filter((c) => c.category === catFilter)
+    if (catFilter === 'all') {
+      const result: ClothingItem[] = []
+      CATEGORIES.forEach((c) => {
+        const inCat = base.filter((x) => x.category === c.key)
+        result.push(...sortByCustomOrder(inCat, orders[c.key]))
+      })
+      result.push(...base.filter((x) => !CATEGORIES.find((c) => c.key === x.category)))
+      return result
+    }
+    return sortByCustomOrder(base, orders[catFilter])
+  }, [wardrobe, catFilter, orders])
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -91,14 +182,21 @@ const RespondOutfit: React.FC = () => {
     })
   }
 
+  const loadFromDraft = (d: OutfitDraft) => {
+    setSelected(new Set(d.clothingItemIds))
+    setNote(d.note ?? '')
+    setDraftPickerOpen(false)
+    message.success(`"${d.name}" yüklendi`)
+  }
+
   const submit = async () => {
     if (!req || !user || selected.size === 0) {
-      alert('En az bir parça seç.')
+      message.warning('En az bir parça seç.')
       return
     }
     setSaving(true)
     try {
-      await addDoc(collection(db, 'outfitSuggestions'), {
+      const payload: Record<string, unknown> = {
         requestId: req.id,
         requesterUid: req.fromUid,
         advisorUid: user.uid,
@@ -108,12 +206,30 @@ const RespondOutfit: React.FC = () => {
         liked: null,
         comment: '',
         feedbackAt: null,
-      })
-      await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
-      navigate(backPath, { replace: true })
+      }
+      if (isWeekly) payload.dayIndex = dayIndex
+
+      await addDoc(collection(db, 'outfitSuggestions'), payload)
+
+      // Haftalık için her gün eklendikçe status 'answered' yapma, son gün geldikçe
+      // user görsün diye yapıyoruz ama tek tek de görür. Mantıklı: ilk öneriyle answered.
+      if (!isWeekly || req.status !== 'answered') {
+        await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
+      }
+      message.success(isWeekly ? `${WEEKDAYS[dayIndex].label} kaydedildi` : 'Öneri gönderildi!')
+
+      if (isWeekly) {
+        // Haftalık: bir sonraki güne geç, seçimi temizle
+        setSelected(new Set())
+        setNote('')
+        if (dayIndex < WEEKDAYS.length - 1) setDayIndex(dayIndex + 1)
+        else navigate(backPath, { replace: true })
+      } else {
+        navigate(backPath, { replace: true })
+      }
     } catch (e) {
       console.error(e)
-      alert('Kaydedilemedi.')
+      message.error('Kaydedilemedi.')
     } finally {
       setSaving(false)
     }
@@ -121,229 +237,360 @@ const RespondOutfit: React.FC = () => {
 
   if (loadErr) {
     return (
-      <div style={styles.page}>
-        <Navbar />
-        <p style={styles.center}>{loadErr}</p>
-        <button type="button" style={styles.back} onClick={() => navigate(backPath)}>
-          Geri dön
-        </button>
-      </div>
+      <AppLayout>
+        <div className="bk-container">
+          <Alert
+            type="error"
+            message={loadErr}
+            action={
+              <Button onClick={() => navigate(backPath)} size="small">
+                Geri Dön
+              </Button>
+            }
+          />
+        </div>
+      </AppLayout>
     )
   }
 
   if (!req) {
     return (
-      <div style={styles.page}>
-        <Navbar />
-        <p style={styles.center}>Yükleniyor…</p>
-      </div>
+      <AppLayout>
+        <div className="bk-container">
+          <Skeleton active />
+        </div>
+      </AppLayout>
     )
   }
 
+  const segOptions = [
+    { label: `Tümü (${categoryCounts.all})`, value: 'all' },
+    ...CATEGORIES.map((c) => ({
+      label: `${c.emoji} ${categoryCounts[c.key] ?? 0}`,
+      value: c.key,
+    })),
+  ]
+
   return (
-    <div style={styles.page}>
-      <Navbar />
-      <div style={styles.wrap}>
-        <h2 style={styles.h2}>Kombin öner</h2>
-        <p style={styles.sub}>
-          İstek sahibinin dolabından parça seç. Seçtiklerin bir kombin önerisi olarak gidecek.
-        </p>
-        {req.note ? (
-          <p style={styles.note}>
-            <strong>Not:</strong> {req.note}
-          </p>
-        ) : null}
-
-        <div style={styles.tabs}>
-          <button
-            type="button"
-            style={{ ...styles.tab, ...(catFilter === 'all' ? styles.tabOn : {}) }}
-            onClick={() => setCatFilter('all')}
+    <AppLayout>
+      <div className="bk-container">
+        <div style={{ marginBottom: 8 }}>
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(backPath)}
+            style={{ color: COLORS.textSecondary }}
           >
-            Tümü
-          </button>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              style={{ ...styles.tab, ...(catFilter === c.key ? styles.tabOn : {}) }}
-              onClick={() => setCatFilter(c.key)}
+            Geri
+          </Button>
+        </div>
+
+        <h1 style={styles.heroTitle}>
+          {isWeekly ? 'Haftalık Kombin Öner' : 'Kombin Öner'}
+        </h1>
+        <p style={styles.heroSub}>
+          {isWeekly
+            ? 'Her gün için bir kombin hazırla'
+            : 'Dolaptan parça seç ve öneriyi gönder'}
+        </p>
+
+        {req.weather && (
+          <Card
+            style={{
+              marginBottom: 14,
+              background: 'linear-gradient(135deg, rgba(124,140,255,0.10), rgba(124,140,255,0.04))',
+            }}
+            bodyStyle={{ padding: 12 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 30 }}>{req.weather.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: COLORS.text, fontSize: 16 }}>
+                  {req.weather.temp}°C · {req.weather.description}
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                  📍 {req.weather.district ? `${req.weather.district}, ` : ''}
+                  {req.weather.city || 'Konum belirtilmemiş'}
+                </div>
+              </div>
+              <Tag color="blue" style={{ margin: 0 }}>
+                Talep anı
+              </Tag>
+            </div>
+          </Card>
+        )}
+
+        {req.note && (
+          <Card style={{ marginBottom: 14 }}>
+            <p style={{ margin: 0, color: COLORS.textSecondary, fontStyle: 'italic' }}>
+              <strong style={{ color: COLORS.text }}>İstek notu:</strong> "{req.note}"
+            </p>
+          </Card>
+        )}
+
+        {/* Haftalık ise gün seçici */}
+        {isWeekly && (
+          <Card style={{ marginBottom: 14 }} bodyStyle={{ padding: 14 }}>
+            <p style={{ margin: '0 0 10px', color: COLORS.textSecondary, fontSize: 13 }}>
+              <CalendarOutlined style={{ marginRight: 6 }} />
+              Şu an hazırladığın gün:
+            </p>
+            <Radio.Group
+              value={dayIndex}
+              onChange={(e) => setDayIndex(e.target.value)}
+              buttonStyle="solid"
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
             >
-              {c.emoji}
-            </button>
-          ))}
+              {WEEKDAYS.map((d) => (
+                <Radio.Button key={d.key} value={d.key}>
+                  {d.short}
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </Card>
+        )}
+
+        {/* Taslaktan yükle (sadece admin) */}
+        {isAdmin && drafts.length > 0 && (
+          <Card style={{ marginBottom: 14 }} bodyStyle={{ padding: 14 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <strong style={{ color: COLORS.text }}>
+                  <FolderOpenOutlined style={{ marginRight: 6, color: COLORS.primary }} />
+                  Taslaklarım
+                </strong>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: COLORS.textMuted }}>
+                  {drafts.length} hazır taslak — birini seç, parçalar otomatik dolsun
+                </p>
+              </div>
+              <Button type="primary" onClick={() => setDraftPickerOpen(true)}>
+                Taslak Seç
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        <div style={{ marginBottom: 14, overflowX: 'auto' }}>
+          <Segmented
+            value={catFilter}
+            onChange={(v) => setCatFilter(v as string)}
+            options={segOptions}
+            block
+          />
         </div>
 
-        <div style={styles.grid}>
-          {filtered.length === 0 ? (
-            <p style={styles.empty}>Bu dolapta bu kategoride parça yok.</p>
-          ) : (
-            filtered.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setEnlargedItem(item)}
-                style={{
-                  ...styles.cell,
-                  ...(selected.has(item.id) ? styles.cellOn : {}),
-                }}
-              >
-                <img src={clothingItemImageSrc(item)} alt="" style={styles.img} />
-                {(item.label || item.description) && (
-                  <span style={styles.labelTag}>
-                    {item.label || item.description}
-                  </span>
-                )}
-                {selected.has(item.id) ? <span style={styles.check}>✓</span> : null}
-              </button>
-            ))
-          )}
-        </div>
+        {loading ? (
+          <div style={styles.grid}>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 12 }} />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <Empty description="Bu kategoride parça yok" />
+        ) : (
+          <div style={styles.grid}>
+            {filtered.map((item) => {
+              const isSelected = selected.has(item.id)
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setEnlargedItem(item)}
+                  style={{
+                    ...styles.cell,
+                    ...(isSelected ? styles.cellOn : {}),
+                  }}
+                >
+                  <SmartImage
+                    cacheKey={item.id}
+                    src={clothingItemImageSrc(item)}
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  {(item.label || item.description) && (
+                    <span style={styles.labelTag}>{item.label || item.description}</span>
+                  )}
+                  {isSelected && (
+                    <div style={styles.check}>
+                      <CheckOutlined style={{ fontSize: 14 }} />
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
-        <textarea
-          placeholder="Kısa not (isteğe bağlı)…"
+        <Input.TextArea
+          placeholder="Kombin için kısa not (isteğe bağlı)…"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          style={styles.textarea}
           rows={3}
+          style={{ marginTop: 18 }}
         />
-        <p style={styles.count}>{selected.size} parça seçildi</p>
-        <button type="button" style={styles.primary} onClick={submit} disabled={saving}>
-          {saving ? 'Gönderiliyor…' : 'Öneriyi gönder'}
-        </button>
-        <button type="button" style={styles.secondary} onClick={() => navigate(backPath)}>
-          Vazgeç
-        </button>
+
       </div>
 
-      {/* Kıyafet detay modalı */}
-      {enlargedItem && (
-        <div style={styles.lightbox} onClick={() => setEnlargedItem(null)}>
-          <div style={styles.lightboxInner} onClick={(e) => e.stopPropagation()}>
-            <button style={styles.lightboxClose} onClick={() => setEnlargedItem(null)}>✕</button>
-            <img src={clothingItemImageSrc(enlargedItem)} alt="" style={styles.lightboxImg} />
-            <div style={styles.lightboxBody}>
-              {enlargedItem.label && (
-                <p style={{ margin: 0, fontWeight: 700, color: '#fff', fontSize: 16 }}>{enlargedItem.label}</p>
-              )}
-              {enlargedItem.description && (
-                <p style={{ margin: '6px 0 0', color: '#aaa', fontSize: 14, lineHeight: 1.6 }}>{enlargedItem.description}</p>
-              )}
-              <button
-                type="button"
-                style={{
-                  ...styles.lightboxToggle,
-                  ...(selected.has(enlargedItem.id) ? styles.lightboxToggleOn : {}),
-                }}
-                onClick={() => {
-                  toggle(enlargedItem.id)
-                  setEnlargedItem(null)
-                }}
-              >
-                {selected.has(enlargedItem.id) ? '✓ Seçildi — Çıkar' : '+ Kombine Ekle'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <StickySubmitBar>
+        <Badge count={selected.size} showZero color={COLORS.primary}>
+          <span style={{ color: COLORS.text, fontWeight: 600 }}>
+            {isWeekly ? WEEKDAYS[dayIndex].label : 'Seçili'}
+          </span>
+        </Badge>
+        <Button
+          type="primary"
+          icon={<SendOutlined />}
+          size="large"
+          onClick={submit}
+          loading={saving}
+          disabled={selected.size === 0}
+        >
+          {saving
+            ? 'Gönderiliyor…'
+            : isWeekly
+            ? dayIndex === WEEKDAYS.length - 1
+              ? 'Son Günü Gönder'
+              : `${WEEKDAYS[dayIndex].label}'yi Kaydet`
+            : 'Öneriyi Gönder'}
+        </Button>
+      </StickySubmitBar>
+
+      <Lightbox
+        open={!!enlargedItem}
+        onClose={() => setEnlargedItem(null)}
+        imageKey={enlargedItem?.id}
+        src={enlargedItem ? clothingItemImageSrc(enlargedItem) : ''}
+        title={enlargedItem?.label}
+        description={enlargedItem?.description}
+        actions={
+          enlargedItem && (
+            <Button
+              type={selected.has(enlargedItem.id) ? 'default' : 'primary'}
+              icon={selected.has(enlargedItem.id) ? <CheckOutlined /> : <PlusOutlined />}
+              onClick={() => {
+                toggle(enlargedItem.id)
+                setEnlargedItem(null)
+              }}
+              size="large"
+              block
+            >
+              {selected.has(enlargedItem.id) ? 'Seçildi — Çıkar' : 'Kombine Ekle'}
+            </Button>
+          )
+        }
+      />
+
+      {/* Taslak seçici modal */}
+      <Modal
+        open={draftPickerOpen}
+        title="Taslaktan Yükle"
+        footer={null}
+        onCancel={() => setDraftPickerOpen(false)}
+        centered
+        width={520}
+      >
+        <p style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 0 }}>
+          Bir taslağı seçince parçalar ve not otomatik doldurulur, sonra
+          istersen düzenleyip gönderebilirsin.
+        </p>
+        {drafts.map((d) => {
+          const occ = OCCASIONS.find((o) => o.key === d.occasion)
+          return (
+            <Card
+              key={d.id}
+              style={{ marginBottom: 10, cursor: 'pointer' }}
+              hoverable
+              bodyStyle={{ padding: 14 }}
+              onClick={() => loadFromDraft(d)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <strong style={{ color: COLORS.text }}>{d.name}</strong>
+                  <p style={{ margin: '2px 0 4px', fontSize: 12, color: COLORS.textMuted }}>
+                    {d.clothingItemIds.length} parça · {dayjs(d.createdAt).format('DD MMM')}
+                  </p>
+                  {occ && (
+                    <Tag color="purple" style={{ marginTop: 4 }}>
+                      {occ.emoji} {occ.label}
+                    </Tag>
+                  )}
+                </div>
+                <Button type="primary">Kullan</Button>
+              </div>
+            </Card>
+          )
+        })}
+      </Modal>
+    </AppLayout>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#0f0f14' },
-  wrap: { maxWidth: 640, margin: '0 auto', padding: '16px' },
-  h2: { margin: '8px 0 4px', fontSize: 22, color: '#fff' },
-  sub: { color: '#888', fontSize: 14, marginBottom: 12 },
-  note: { background: '#1a1a24', padding: 12, borderRadius: 10, fontSize: 14, color: '#ccc', border: '1px solid rgba(255,255,255,0.06)' },
-  tabs: { display: 'flex', flexWrap: 'wrap', gap: 6, margin: '12px 0' },
-  tab: {
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'rgba(255,255,255,0.15)',
-    background: 'rgba(255,255,255,0.05)',
-    borderRadius: 20,
-    padding: '6px 10px',
-    cursor: 'pointer',
-    fontSize: 13,
-    color: '#ccc',
+  heroTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 700,
+    color: COLORS.text,
+    letterSpacing: '-0.4px',
   },
-  tabOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.2)', color: '#fff' },
+  heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
     gap: 8,
-    marginBottom: 12,
   },
   cell: {
-    position: 'relative',
+    position: 'relative' as const,
     aspectRatio: '1',
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: 'hidden',
-    borderWidth: 3,
-    borderStyle: 'solid',
-    borderColor: 'transparent',
+    border: '2px solid transparent',
     padding: 0,
     cursor: 'pointer',
-    background: '#1a1a24',
+    background: COLORS.bgCard,
+    transition: 'all 0.15s ease',
   },
-  cellOn: { borderColor: '#818cf8' },
-  img: { width: '100%', height: '100%', objectFit: 'cover' },
-  labelTag: { position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, padding: '3px 6px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
-  lightbox: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  lightboxInner: { position: 'relative', maxWidth: 480, width: '100%', background: '#1a1a24', borderRadius: 16, overflow: 'hidden' },
-  lightboxClose: { position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  lightboxImg: { width: '100%', maxHeight: '60vh', objectFit: 'contain', display: 'block' },
-  lightboxBody: { padding: '14px 16px 18px' },
-  lightboxToggle: { marginTop: 14, width: '100%', padding: '12px 0', borderRadius: 10, border: '2px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: '#ccc', fontSize: 15, fontWeight: 600, cursor: 'pointer' },
-  lightboxToggleOn: { borderColor: '#818cf8', background: 'rgba(99,102,241,0.25)', color: '#fff' },
+  cellOn: {
+    borderColor: COLORS.primary,
+    boxShadow: `0 0 0 4px rgba(124, 140, 255, 0.18)`,
+  },
+  labelTag: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: 'rgba(0,0,0,0.75)',
+    color: '#fff',
+    fontSize: 10,
+    padding: '3px 6px',
+    textAlign: 'center' as const,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap' as const,
+    textOverflow: 'ellipsis',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  },
   check: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    background: '#6366f1',
+    position: 'absolute' as const,
+    top: 6,
+    right: 6,
+    background: COLORS.primary,
     color: '#fff',
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     borderRadius: '50%',
-    fontSize: 14,
-    lineHeight: '24px',
-    textAlign: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 4px 10px rgba(124,140,255,0.4)',
   },
-  textarea: {
-    width: '100%',
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(255,255,255,0.05)',
-    color: '#fff',
-    padding: 10,
-    fontSize: 14,
-    boxSizing: 'border-box',
-  },
-  count: { fontSize: 13, color: '#888' },
-  primary: {
-    width: '100%',
-    marginTop: 8,
-    padding: 14,
-    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  secondary: {
-    width: '100%',
-    marginTop: 8,
-    padding: 10,
-    background: 'transparent',
-    border: 'none',
-    color: '#888',
-    cursor: 'pointer',
-  },
-  center: { textAlign: 'center', padding: 24, color: '#888' },
-  back: { display: 'block', margin: '16px auto', padding: '10px 20px' },
-  empty: { gridColumn: '1 / -1', textAlign: 'center', color: '#666' },
 }
 
 export default RespondOutfit

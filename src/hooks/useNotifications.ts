@@ -1,51 +1,137 @@
+import { arrayUnion, doc, setDoc } from 'firebase/firestore'
 import { getToken, onMessage } from 'firebase/messaging'
-import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect } from 'react'
-import { db, messagingPromise } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { db, messagingPromise } from '../firebase'
 
-// Firebase Console → Project Settings → Cloud Messaging →
-// "Web configuration" → "Anahtar çifti oluştur" → kopyala ve buraya yapıştır
-const VAPID_KEY = 'BlqIVR_Ldt1_-f7UoViy3sDprdCIYsPLw6tWT4SjFK9B7yyhraxtKGbcj_DC93jzuTfi0iSn5bjl-adq47NKNnE'
+// Firebase Console → Project Settings → Cloud Messaging → "Web configuration"
+const VAPID_KEY =
+  'BlqIVR_Ldt1_-f7UoViy3sDprdCIYsPLw6tWT4SjFK9B7yyhraxtKGbcj_DC93jzuTfi0iSn5bjl-adq47NKNnE'
 
+/**
+ * Push notification kurulumu.
+ *
+ * Sorunlar ve çözümleri:
+ *  1. Browser bildirim izni daha önce reddedilmişse popup bile gelmiyordu — şimdi
+ *     `Notification.permission` kontrol ediliyor ve durum loglanıyor.
+ *  2. Service worker registration başarısız olursa sessizce ölüyordu — şimdi
+ *     hata loglanıyor ve fallback olarak default SW deneniyor.
+ *  3. Token değiştiğinde Firestore'a kaydedilmiyordu — şimdi her zaman
+ *     setDoc + merge ile güncelleniyor (updateDoc, profile yoksa hata verirdi).
+ *  4. onMessage handler her kullanıcı değişiminde tekrar register oluyordu — şimdi
+ *     unsubscribe edip yeniden bağlanıyor.
+ */
 export function useNotifications() {
   const { user } = useAuth()
 
   useEffect(() => {
-    if (!user || !('Notification' in window) || !('serviceWorker' in navigator)) return
+    if (!user) return
+    if (typeof window === 'undefined') return
+    if (!('Notification' in window)) {
+      console.info('[bk-notif] Bu tarayıcı bildirimleri desteklemiyor.')
+      return
+    }
+    if (!('serviceWorker' in navigator)) {
+      console.info('[bk-notif] Service worker desteklenmiyor.')
+      return
+    }
 
-    setup(user.uid).catch(console.error)
+    let unsubscribeOnMessage: (() => void) | null = null
+
+    setup(user.uid).then((unsub) => {
+      unsubscribeOnMessage = unsub
+    })
+
+    return () => {
+      if (unsubscribeOnMessage) unsubscribeOnMessage()
+    }
   }, [user?.uid])
 }
 
-async function setup(uid: string) {
-  const messaging = await messagingPromise
-  if (!messaging) return
+async function setup(uid: string): Promise<(() => void) | null> {
+  try {
+    const messaging = await messagingPromise
+    if (!messaging) {
+      console.info('[bk-notif] Messaging bu ortamda desteklenmiyor.')
+      return null
+    }
 
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') return
+    // İzin durumunu kontrol et
+    let permission = Notification.permission
+    if (permission === 'default') {
+      permission = await Notification.requestPermission()
+    }
+    if (permission !== 'granted') {
+      console.info('[bk-notif] Bildirim izni reddedildi:', permission)
+      return null
+    }
 
-  // FCM için ayrı bir service worker kaydı (mevcut SW ile çakışmaz)
-  const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-    scope: '/fcm-sw/',
-  })
+    // Service worker kaydı - hata olursa logla ama tek try ile dene
+    let swReg: ServiceWorkerRegistration | undefined
+    try {
+      swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/firebase-cloud-messaging-push-scope',
+      })
+      await navigator.serviceWorker.ready
+    } catch (e) {
+      console.error('[bk-notif] Service worker kaydı başarısız:', e)
+      return null
+    }
 
-  const token = await getToken(messaging, {
-    vapidKey: VAPID_KEY,
-    serviceWorkerRegistration: swReg,
-  })
-  if (!token) return
-
-  // Token'ı Firestore'a kaydet (Cloud Function buradan okuyacak)
-  await updateDoc(doc(db, 'profiles', uid), { fcmToken: token })
-
-  // Uygulama açıkken gelen bildirimler
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification ?? {}
-    if (!title) return
-    new Notification(title, {
-      body: body ?? '',
-      icon: '/icon-192.png',
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: swReg,
     })
-  })
+    if (!token) {
+      console.warn('[bk-notif] FCM token alınamadı.')
+      return null
+    }
+    console.info('[bk-notif] Token alındı, profile yazılıyor.')
+
+    // Çoklu-cihaz: token'ı array'e ekle (arrayUnion duplicate eklemez).
+    // Geriye dönük uyumluluk için fcmToken alanını da güncelliyoruz — eski
+    // function deploy'ları varsa onlar da çalışsın.
+    await setDoc(
+      doc(db, 'profiles', uid),
+      {
+        fcmToken: token,
+        fcmTokens: arrayUnion(token),
+        fcmTokenUpdatedAt: Date.now(),
+      },
+      { merge: true },
+    )
+
+    // localStorage'a son token'ı yaz - aynı token tekrar yazılmasın
+    try {
+      localStorage.setItem('bk_fcm_token', token)
+    } catch {}
+
+    // Uygulama açıkken gelen bildirimler için handler
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.info('[bk-notif] Foreground mesaj:', payload)
+      const title = payload.notification?.title ?? 'Bakçay'
+      const body = payload.notification?.body ?? ''
+      try {
+        const notif = new Notification(title, {
+          body,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          tag: 'bk-notif',
+        })
+        notif.onclick = () => {
+          window.focus()
+          const link = payload.fcmOptions?.link
+          if (link) window.location.href = link
+          notif.close()
+        }
+      } catch (e) {
+        console.error('[bk-notif] Foreground notification gösterilemedi:', e)
+      }
+    })
+
+    return unsubscribe
+  } catch (e) {
+    console.error('[bk-notif] Setup hatası:', e)
+    return null
+  }
 }

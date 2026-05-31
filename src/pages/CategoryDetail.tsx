@@ -1,28 +1,58 @@
 import {
-    collection,
-    deleteDoc,
-    doc,
-    onSnapshot,
-    query,
-    updateDoc,
-    where,
+  ArrowLeftOutlined,
+  CalendarOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PictureOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
+import {
+  App,
+  Button,
+  Empty,
+  Input,
+  Upload,
+} from 'antd'
+import Lightbox from '../components/Lightbox'
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  updateDoc,
+  where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import Navbar from '../components/Navbar'
+import { useNavigate, useParams } from 'react-router-dom'
+import AppLayout from '../components/AppLayout'
+import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
+import { COLORS } from '../theme'
 import { CATEGORIES, ClothingItem } from '../types'
+import { removeCachedImage } from '../utils/imageCache'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { summarizeBatchUpload, uploadClothesBatch } from '../utils/uploadClothesBatch'
+import {
+  saveWardrobeOrder,
+  sortByCustomOrder,
+  subscribeWardrobeOrders,
+} from '../utils/wardrobeOrder'
 
 const CategoryDetail: React.FC = () => {
   const { user } = useAuth()
   const { categoryKey } = useParams<{ categoryKey: string }>()
+  const navigate = useNavigate()
+  const { message, modal } = App.useApp()
   const category = CATEGORIES.find((c) => c.key === categoryKey)
+
   const [items, setItems] = useState<ClothingItem[]>([])
+  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
@@ -33,7 +63,7 @@ const CategoryDetail: React.FC = () => {
   const cacheKey = user && categoryKey ? `bk_clothes_${user.uid}_${categoryKey}` : null
   const orderKey = user && categoryKey ? `bk_order_${user.uid}_${categoryKey}` : null
 
-  // Load saved order
+  // localStorage'dan ilk sırayı oku (offline / Firestore yüklenmeden flash önler)
   useEffect(() => {
     if (!orderKey) return
     try {
@@ -42,62 +72,109 @@ const CategoryDetail: React.FC = () => {
     } catch {}
   }, [orderKey])
 
-  // Load clothes — show cache instantly, then sync from Firestore
+  // Firestore'dan sıralama dinleyici (canlı senkron — başka cihazda değişse hemen yansır)
+  useEffect(() => {
+    if (!user || !categoryKey) return
+    return subscribeWardrobeOrders(user.uid, (orders) => {
+      const list = orders[categoryKey]
+      if (list && list.length > 0) {
+        setCustomOrder(list)
+        if (orderKey) {
+          try {
+            localStorage.setItem(orderKey, JSON.stringify(list))
+          } catch {}
+        }
+      }
+    })
+  }, [user, categoryKey, orderKey])
+
   useEffect(() => {
     if (!categoryKey || !user) return
 
     if (cacheKey) {
       try {
         const cached = localStorage.getItem(cacheKey)
-        if (cached) setItems(JSON.parse(cached))
+        if (cached) {
+          setItems(JSON.parse(cached))
+          setLoading(false)
+        }
       } catch {}
     }
 
-    const q = query(collection(db, 'clothes'), where('category', '==', categoryKey))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const mapped = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
-      const mine = mapped.filter((x) => x.ownerId === user.uid)
-      if (cacheKey) {
-        try { localStorage.setItem(cacheKey, JSON.stringify(mine)) } catch {}
-      }
-      setItems(mine)
-    })
+    // Doğrudan ownerId + category compound query → daha az read
+    const q = query(
+      collection(db, 'clothes'),
+      where('ownerId', '==', user.uid),
+      where('category', '==', categoryKey),
+    )
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const mapped = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[]
+        if (cacheKey) {
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(mapped))
+          } catch {}
+        }
+        setItems(mapped)
+        setLoading(false)
+      },
+      (err) => {
+        console.error(err)
+        setLoading(false)
+      },
+    )
     return () => unsubscribe()
-  }, [categoryKey, user])
+  }, [categoryKey, user, cacheKey])
 
-  const orderedItems = useMemo(() => {
-    if (customOrder.length === 0) {
-      return [...items].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-    }
-    const pos = new Map(customOrder.map((id, i) => [id, i]))
-    return [...items].sort((a, b) => {
-      const pa = pos.has(a.id) ? pos.get(a.id)! : Infinity
-      const pb = pos.has(b.id) ? pos.get(b.id)! : Infinity
-      if (pa !== pb) return pa - pb
-      return (b.createdAt ?? 0) - (a.createdAt ?? 0)
-    })
-  }, [items, customOrder])
+  const orderedItems = useMemo(
+    () => sortByCustomOrder(items, customOrder),
+    [items, customOrder],
+  )
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files
-    if (!list?.length || !categoryKey || !user) return
+  const handleUpload = async (files: FileList) => {
+    if (!categoryKey || !user) return
     setUploading(true)
+    setUploadProgress(10)
     try {
-      const r = await uploadClothesBatch(list, categoryKey, user.uid)
+      const r = await uploadClothesBatch(files, categoryKey, user.uid)
+      setUploadProgress(100)
       const msg = summarizeBatchUpload(r)
-      if (msg) alert(msg)
-    } catch (error) {
-      console.error(error)
-      alert('Yükleme sırasında hata oluştu!')
+      if (msg) {
+        message.warning(msg)
+      } else if (r.added > 0) {
+        message.success(`${r.added} parça başarıyla eklendi`)
+      }
+    } catch (e) {
+      console.error(e)
+      message.error('Yükleme sırasında hata oluştu')
     } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setTimeout(() => {
+        setUploading(false)
+        setUploadProgress(0)
+      }, 400)
     }
   }
 
   const handleDelete = async (item: ClothingItem) => {
-    if (!confirm('Bu kıyafeti silmek istediğine emin misin?')) return
-    try { await deleteDoc(doc(db, 'clothes', item.id)) } catch (e) { console.error(e) }
+    modal.confirm({
+      title: 'Bu kıyafeti silmek istediğine emin misin?',
+      content: 'Bu işlem geri alınamaz.',
+      okText: 'Sil',
+      okType: 'danger',
+      cancelText: 'Vazgeç',
+      centered: true,
+      onOk: async () => {
+        try {
+          await deleteDoc(doc(db, 'clothes', item.id))
+          await removeCachedImage(item.id)
+          message.success('Silindi')
+        } catch (e) {
+          console.error(e)
+          message.error('Silinemedi')
+        }
+      },
+    })
   }
 
   const startEdit = (item: ClothingItem) => {
@@ -106,23 +183,29 @@ const CategoryDetail: React.FC = () => {
   }
 
   const saveLabel = async (item: ClothingItem) => {
-    try { await updateDoc(doc(db, 'clothes', item.id), { label: editLabel.trim() }) } catch (e) { console.error(e) }
+    try {
+      await updateDoc(doc(db, 'clothes', item.id), { label: editLabel.trim() })
+      message.success('Kaydedildi')
+    } catch (e) {
+      console.error(e)
+      message.error('Kaydedilemedi')
+    }
     setEditingId(null)
   }
 
   const insertToday = () => {
     const d = new Date()
     const dateStr = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`
-    setEditLabel((prev) => prev ? `${prev} ${dateStr}` : dateStr)
+    setEditLabel((prev) => (prev ? `${prev} ${dateStr}` : dateStr))
   }
 
-  const handleDragStart = (id: string) => { draggedId.current = id }
-
+  const handleDragStart = (id: string) => {
+    draggedId.current = id
+  }
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault()
     setDragOverId(id)
   }
-
   const handleDrop = (targetId: string) => {
     if (!draggedId.current || draggedId.current === targetId) {
       draggedId.current = null
@@ -137,143 +220,342 @@ const CategoryDetail: React.FC = () => {
     ids.splice(toIdx, 0, draggedId.current)
     setCustomOrder(ids)
     if (orderKey) {
-      try { localStorage.setItem(orderKey, JSON.stringify(ids)) } catch {}
+      try {
+        localStorage.setItem(orderKey, JSON.stringify(ids))
+      } catch {}
+    }
+    // Firestore'a kalıcı kaydet — admin de aynı sırayı görsün
+    if (user && categoryKey) {
+      saveWardrobeOrder(user.uid, categoryKey, ids)
     }
     draggedId.current = null
     setDragOverId(null)
   }
-
   const handleDragEnd = () => {
     draggedId.current = null
     setDragOverId(null)
   }
 
   if (!category) {
-    return (<div style={st.page}><Navbar /><p style={{ textAlign: 'center', marginTop: 40, color: '#666' }}>Kategori bulunamadı</p></div>)
+    return (
+      <AppLayout>
+        <div className="bk-container">
+          <Empty description="Kategori bulunamadı" />
+        </div>
+      </AppLayout>
+    )
   }
 
   return (
-    <div style={st.page}>
-      <Navbar />
-      <div style={st.container}>
-        <div style={st.header}>
-          <span style={{ fontSize: 40 }}>{category.emoji}</span>
-          <div>
-            <h2 style={st.title}>{category.label}</h2>
-            <p style={st.count}>{items.length} parça · sürükleyerek sırala</p>
+    <AppLayout>
+      <div className="bk-container">
+        {/* Header */}
+        <div style={styles.header}>
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate('/wardrobe')}
+            style={{ color: COLORS.textSecondary }}
+          >
+            Geri
+          </Button>
+        </div>
+
+        <div style={styles.hero}>
+          <div style={styles.heroIcon}>
+            <span style={{ fontSize: 30 }}>{category.emoji}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <h1 style={styles.heroTitle}>{category.label}</h1>
+            <p style={styles.heroSub}>
+              {items.length} parça · {items.length > 1 ? 'sürükleyerek sırala' : 'kıyafet eklemek için aşağıdaki butona dokun'}
+            </p>
           </div>
         </div>
 
-        <label style={st.uploadBtn}>
-          {uploading ? '⏳ Yükleniyor...' : '+ Kıyafet Ekle'}
-          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleUpload} style={{ display: 'none' }} disabled={uploading} />
-        </label>
+        {/* Upload area */}
+        <Upload
+          multiple
+          accept="image/*"
+          showUploadList={false}
+          beforeUpload={(_file, fileList) => {
+            const dt = new DataTransfer()
+            fileList.forEach((f) => dt.items.add(f))
+            handleUpload(dt.files)
+            return false
+          }}
+          disabled={uploading}
+        >
+          <Button
+            type="primary"
+            block
+            size="large"
+            icon={<PlusOutlined />}
+            loading={uploading}
+            style={{ marginBottom: 20, height: 50 }}
+          >
+            {uploading ? `Yükleniyor ${uploadProgress}%` : 'Kıyafet Ekle'}
+          </Button>
+        </Upload>
 
-        {items.length === 0 ? (
-          <div style={st.emptyState}>
-            <span style={{ fontSize: 48 }}>📂</span>
-            <p style={{ color: '#888', fontSize: 16, margin: 0, fontWeight: 600 }}>Henüz kıyafet yok</p>
-            <p style={{ color: '#666', fontSize: 13, margin: 0 }}>Yukarıdan ekle</p>
+        {/* Content */}
+        {loading ? (
+          <div style={styles.grid}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton" style={styles.skeletonCard} />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <div style={styles.empty}>
+            <PictureOutlined style={{ fontSize: 48, color: COLORS.textMuted }} />
+            <p style={{ color: COLORS.textSecondary, margin: '14px 0 0', fontWeight: 600 }}>
+              Henüz kıyafet eklenmedi
+            </p>
+            <p style={{ color: COLORS.textMuted, margin: 0, fontSize: 13 }}>
+              Birden fazla fotoğrafı tek seferde seçebilirsin
+            </p>
           </div>
         ) : (
-          <div style={st.grid}>
+          <div className="bk-wardrobe-grid">
             {orderedItems.map((item) => (
               <div
                 key={item.id}
-                style={{ ...st.card, ...(dragOverId === item.id ? st.cardDragOver : {}) }}
+                className="bk-card-hover"
+                style={{
+                  ...styles.card,
+                  ...(dragOverId === item.id ? styles.cardDragOver : {}),
+                }}
                 draggable
                 onDragStart={() => handleDragStart(item.id)}
                 onDragOver={(e) => handleDragOver(e, item.id)}
                 onDrop={() => handleDrop(item.id)}
                 onDragEnd={handleDragEnd}
               >
-                <img
+                <SmartImage
+                  cacheKey={item.id}
                   src={clothingItemImageSrc(item)}
-                  alt=""
-                  style={st.image}
-                  loading="lazy"
-                  decoding="async"
+                  style={{ width: '100%', height: '100%', cursor: 'pointer' }}
                   onClick={() => setEnlargedItem(item)}
                 />
-                <div style={st.cardOverlay}>
+
+                {item.ownerId === user?.uid && editingId !== item.id && (
+                  <Button
+                    type="text"
+                    danger
+                    shape="circle"
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDelete(item)
+                    }}
+                    style={styles.deleteBtn}
+                  />
+                )}
+
+                <div style={styles.cardOverlay}>
                   {editingId === item.id ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0, width: '100%' }}>
-                        <input
-                          type="text"
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                      <div style={{ display: 'flex', gap: 4, width: '100%' }}>
+                        <Input
+                          size="small"
                           value={editLabel}
                           onChange={(e) => setEditLabel(e.target.value)}
-                          placeholder="ör. Baggy jean"
+                          placeholder="Etiket ekle"
                           autoFocus
-                          onKeyDown={(e) => e.key === 'Enter' && saveLabel(item)}
-                          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, color: '#fff', padding: '5px 8px', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveLabel(item)
+                            if (e.key === 'Escape') setEditingId(null)
+                          }}
+                          style={{ flex: 1, fontSize: 12 }}
                         />
-                        <button type="button" onClick={() => saveLabel(item)} style={{ flexShrink: 0, background: '#22c55e', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12, minWidth: 28 }}>✓</button>
-                        <button type="button" onClick={() => setEditingId(null)} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12, minWidth: 28 }}>✕</button>
+                        <Button
+                          size="small"
+                          type="primary"
+                          icon={<CheckOutlined />}
+                          onClick={() => saveLabel(item)}
+                        />
+                        <Button
+                          size="small"
+                          icon={<CloseOutlined />}
+                          onClick={() => setEditingId(null)}
+                        />
                       </div>
-                      <button type="button" onClick={insertToday} style={st.dateBtn}>
-                        📅 Bugünün tarihi
-                      </button>
+                      <Button
+                        size="small"
+                        icon={<CalendarOutlined />}
+                        onClick={insertToday}
+                        style={{ background: 'rgba(124,140,255,0.18)', border: 'none', color: '#fff', fontSize: 11 }}
+                      >
+                        Bugünün tarihi
+                      </Button>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => startEdit(item)} style={st.labelBtn}>
-                      {item.label ? `✏️ ${item.label}` : '✏️ Açıklama ekle'}
-                    </button>
+                    <>
+                      {item.label && (
+                        <div style={styles.labelText} title={item.label}>
+                          {item.label}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => startEdit(item)} style={styles.labelBtn}>
+                        <EditOutlined style={{ marginRight: 6 }} />
+                        {item.label ? 'Düzenle' : 'Açıklama'}
+                      </button>
+                    </>
                   )}
                 </div>
-                {item.ownerId === user?.uid && (
-                  <button type="button" onClick={() => handleDelete(item)} style={st.deleteBtn}>🗑️</button>
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Büyütülmüş görünüm */}
-      {enlargedItem && (
-        <div style={st.lightbox} onClick={() => setEnlargedItem(null)}>
-          <div style={st.lightboxInner} onClick={(e) => e.stopPropagation()}>
-            <button style={st.lightboxClose} onClick={() => setEnlargedItem(null)}>✕</button>
-            <img src={clothingItemImageSrc(enlargedItem)} alt="" style={st.lightboxImg} />
-            {(enlargedItem.label || enlargedItem.description) && (
-              <div style={st.lightboxDesc}>
-                {enlargedItem.label && (
-                  <p style={{ margin: 0, fontWeight: 600, color: '#fff', fontSize: 16 }}>{enlargedItem.label}</p>
-                )}
-                {enlargedItem.description && (
-                  <p style={{ margin: '6px 0 0', color: '#aaa', fontSize: 14, lineHeight: 1.5 }}>{enlargedItem.description}</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      <Lightbox
+        open={!!enlargedItem}
+        onClose={() => setEnlargedItem(null)}
+        slides={orderedItems.map((c) => ({
+          src: clothingItemImageSrc(c),
+          imageKey: c.id,
+          title: c.label,
+          description: c.description,
+        }))}
+        startIndex={Math.max(
+          0,
+          orderedItems.findIndex((c) => c.id === enlargedItem?.id),
+        )}
+        actions={
+          enlargedItem &&
+          enlargedItem.ownerId === user?.uid && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  startEdit(enlargedItem)
+                  setEnlargedItem(null)
+                }}
+              >
+                Etiketi Düzenle
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => {
+                  setEnlargedItem(null)
+                  handleDelete(enlargedItem)
+                }}
+              >
+                Sil
+              </Button>
+            </div>
+          )
+        }
+      />
+    </AppLayout>
   )
 }
 
-const st: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#0f0f14' },
-  container: { padding: '20px 16px', maxWidth: 600, margin: '0 auto', boxSizing: 'border-box' },
-  header: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 },
-  title: { margin: 0, fontSize: 22, color: '#fff', fontWeight: 700 },
-  count: { margin: 0, fontSize: 12, color: '#666' },
-  uploadBtn: { display: 'block', width: '100%', padding: 14, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', cursor: 'pointer', marginBottom: 20, boxSizing: 'border-box' },
-  emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '60px 0' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 },
-  card: { position: 'relative', borderRadius: 14, overflow: 'hidden', background: '#1a1a24', aspectRatio: '1', cursor: 'grab' },
-  cardDragOver: { outline: '2px solid #818cf8', outlineOffset: 2 },
-  image: { width: '100%', height: '100%', objectFit: 'cover', background: '#2a2a35', cursor: 'pointer' },
-  cardOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', padding: '28px 8px 8px' },
-  labelBtn: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 12, cursor: 'pointer', padding: '2px 0', textAlign: 'left', width: '100%' },
-  dateBtn: { alignSelf: 'flex-start', background: 'rgba(99,102,241,0.75)', border: 'none', color: '#fff', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11 },
-  deleteBtn: { position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  lightbox: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  lightboxInner: { position: 'relative', maxWidth: 500, width: '100%', background: '#1a1a24', borderRadius: 16, overflow: 'hidden' },
-  lightboxClose: { position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', width: 34, height: 34, borderRadius: '50%', fontSize: 16, cursor: 'pointer', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  lightboxImg: { width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block' },
-  lightboxDesc: { padding: '12px 16px 16px' },
+const styles: Record<string, React.CSSProperties> = {
+  header: { marginBottom: 8 },
+  hero: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 18,
+  },
+  heroIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    background: COLORS.gradientSoft,
+    border: `1px solid ${COLORS.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  heroTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 700,
+    color: COLORS.text,
+    letterSpacing: '-0.4px',
+  },
+  heroSub: {
+    margin: '4px 0 0',
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  skeletonCard: {
+    aspectRatio: '1',
+    borderRadius: 14,
+  },
+  card: {
+    position: 'relative' as const,
+    borderRadius: 14,
+    overflow: 'hidden',
+    background: COLORS.bgCard,
+    aspectRatio: '1',
+    cursor: 'grab',
+  },
+  cardDragOver: {
+    outline: `2px solid ${COLORS.primary}`,
+    outlineOffset: 2,
+  },
+  cardOverlay: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: 'linear-gradient(transparent 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.9) 100%)',
+    padding: '24px 6px 6px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+  },
+  labelText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 500,
+    lineHeight: 1.3,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
+    padding: '0 2px',
+  },
+  labelBtn: {
+    width: '100%',
+    background: 'rgba(255,255,255,0.12)',
+    border: 'none',
+    color: '#fff',
+    fontSize: 11,
+    padding: '4px 6px',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+  deleteBtn: {
+    position: 'absolute' as const,
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    minWidth: 26,
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    zIndex: 2,
+  },
+  empty: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    padding: '60px 0',
+    background: COLORS.bgCard,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 18,
+  },
 }
 
 export default CategoryDetail
