@@ -182,6 +182,10 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'saturate(180%) blur(16px)',
     WebkitBackdropFilter: 'saturate(180%) blur(16px)',
     borderBottom: `1px solid ${COLORS.border}`,
+    // iOS PWA notch/status bar için safe area
+    paddingTop: 'env(safe-area-inset-top)',
+    paddingLeft: 'env(safe-area-inset-left)',
+    paddingRight: 'env(safe-area-inset-right)',
   },
   topBarInner: {
     maxWidth: 1080,

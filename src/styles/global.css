@@ -139,6 +139,16 @@ body {
   }
 }
 
+/* Banner tıklanınca değerlendirilmemiş öneri 2.5sn parlasın */
+.bk-pulse-highlight {
+  animation: bk-pulse-glow 2.5s ease-out;
+}
+@keyframes bk-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+  20% { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.35); }
+  60% { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0.15); }
+}
+
 .bk-hero {
   display: flex;
   align-items: center;

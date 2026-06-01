@@ -378,6 +378,42 @@ const RespondOutfit: React.FC = () => {
           </Card>
         )}
 
+        {/* Üst şerit — seçili parçaların minik halleri */}
+        {selected.size > 0 && (
+          <Card
+            style={styles.selectedStrip}
+            bodyStyle={{ padding: 10 }}
+          >
+            <div style={styles.selectedRow}>
+              <span style={styles.selectedLabel}>
+                Seçili ({selected.size}):
+              </span>
+              <div style={styles.selectedThumbs}>
+                {Array.from(selected).map((id) => {
+                  const c = wardrobe.find((w) => w.id === id)
+                  if (!c) return null
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggle(id)}
+                      style={styles.selectedThumbBtn}
+                      title="Tıkla — çıkar"
+                    >
+                      <SmartImage
+                        cacheKey={c.id}
+                        src={clothingItemImageSrc(c)}
+                        style={{ width: 42, height: 42, borderRadius: 6 }}
+                      />
+                      <span style={styles.selectedRemove}>×</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </Card>
+        )}
+
         <div style={{ marginBottom: 14, overflowX: 'auto' }}>
           <Segmented
             value={catFilter}
@@ -388,7 +424,7 @@ const RespondOutfit: React.FC = () => {
         </div>
 
         {loading ? (
-          <div style={styles.grid}>
+          <div className="bk-wardrobe-grid-compact">
             {Array.from({ length: 9 }).map((_, i) => (
               <div key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 12 }} />
             ))}
@@ -396,7 +432,7 @@ const RespondOutfit: React.FC = () => {
         ) : filtered.length === 0 ? (
           <Empty description="Bu kategoride parça yok" />
         ) : (
-          <div style={styles.grid}>
+          <div className="bk-wardrobe-grid-compact">
             {filtered.map((item) => {
               const isSelected = selected.has(item.id)
               return (
@@ -541,6 +577,56 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '-0.4px',
   },
   heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
+  selectedStrip: {
+    position: 'sticky' as const,
+    top: 10,
+    zIndex: 5,
+    marginBottom: 12,
+    background: 'rgba(124,140,255,0.10)',
+    border: `1px solid rgba(124,140,255,0.30)`,
+  },
+  selectedRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap' as const,
+  },
+  selectedLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: COLORS.text,
+    whiteSpace: 'nowrap' as const,
+  },
+  selectedThumbs: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    flex: 1,
+  },
+  selectedThumbBtn: {
+    position: 'relative' as const,
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 6,
+    lineHeight: 0,
+  },
+  selectedRemove: {
+    position: 'absolute' as const,
+    top: -5,
+    right: -5,
+    background: COLORS.error,
+    color: '#fff',
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    fontSize: 11,
+    lineHeight: '16px',
+    textAlign: 'center' as const,
+    fontWeight: 700,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',

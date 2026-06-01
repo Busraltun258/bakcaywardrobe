@@ -169,8 +169,9 @@ const OutfitDiary: React.FC = () => {
     const key = date.format('YYYY-MM-DD')
     const p = byDate.get(key)
     if (!p) return null
-    const items = p.suggestion.clothingItemIds
-      .slice(0, 3)
+    const allIds = p.suggestion.clothingItemIds
+    const items = allIds
+      .slice(0, 2)
       .map((id) => clothes[id])
       .filter(Boolean) as ClothingItem[]
     if (items.length === 0) return null
@@ -184,9 +185,7 @@ const OutfitDiary: React.FC = () => {
             style={{ width: 20, height: 20, borderRadius: 4 }}
           />
         ))}
-        {p.suggestion.clothingItemIds.length > 3 && (
-          <span style={styles.cellMore}>+{p.suggestion.clothingItemIds.length - 3}</span>
-        )}
+        {allIds.length > 2 && <span style={styles.cellMore}>···</span>}
       </div>
     )
   }
@@ -323,7 +322,7 @@ const DiaryRow: React.FC<{
         </div>
       </div>
       <div style={styles.rowThumbs}>
-        {items.slice(0, 4).map((c) => (
+        {items.slice(0, 6).map((c) => (
           <SmartImage
             key={c.id}
             cacheKey={c.id}
@@ -331,7 +330,7 @@ const DiaryRow: React.FC<{
             style={{ width: 32, height: 32, borderRadius: 6 }}
           />
         ))}
-        {items.length > 4 && <span style={styles.moreCount}>+{items.length - 4}</span>}
+        {items.length > 6 && <span style={styles.dots}>···</span>}
       </div>
       <Tag color={p.isPast ? 'default' : 'processing'} style={{ margin: 0 }}>
         {p.isPast ? 'Giyildi' : 'Planlandı'}
@@ -383,6 +382,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(255,255,255,0.06)',
     padding: '1px 5px',
     borderRadius: 6,
+  },
+  dots: {
+    fontSize: 16,
+    color: COLORS.textMuted,
+    letterSpacing: 2,
+    lineHeight: 1,
+    fontWeight: 700,
+    marginLeft: 2,
   },
 }
 

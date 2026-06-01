@@ -43,18 +43,37 @@ const Favorites: React.FC = () => {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      setLoading(false)
+      return
+    }
     const q = query(
       collection(db, 'outfitSuggestions'),
       where('requesterUid', '==', user.uid),
       where('liked', '==', 'yes'),
     )
-    return onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion))
-      list.sort((a, b) => (b.feedbackAt ?? b.createdAt ?? 0) - (a.feedbackAt ?? a.createdAt ?? 0))
-      setSuggestions(list)
-      setLoading(false)
-    })
+    return onSnapshot(
+      q,
+      (snap) => {
+        // Favoriler = SADECE 5 yıldız. Eski "Beğendim"-without-rating buraya düşmez.
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion))
+          .filter((s) => s.rating === 5)
+        // Yıldız sayısı yüksek olanlar başta, sonra feedback tarihine göre
+        list.sort((a, b) => {
+          const ra = a.rating ?? 0
+          const rb = b.rating ?? 0
+          if (ra !== rb) return rb - ra
+          return (b.feedbackAt ?? b.createdAt ?? 0) - (a.feedbackAt ?? a.createdAt ?? 0)
+        })
+        setSuggestions(list)
+        setLoading(false)
+      },
+      (err) => {
+        console.error('favorites subscribe error:', err)
+        setLoading(false)
+      },
+    )
   }, [user])
 
   // Tüm kıyafet thumbnaillerini batch ile yükle
@@ -175,9 +194,16 @@ const Favorites: React.FC = () => {
                       {dayjs(s.feedbackAt ?? s.createdAt).format('DD MMM YYYY')}
                     </div>
                   </div>
-                  <Tag color="success" icon={<HeartFilled />}>
-                    Beğendin
-                  </Tag>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    {s.rating && s.rating > 0 && (
+                      <span style={{ fontSize: 14, letterSpacing: 1 }}>
+                        {'⭐'.repeat(s.rating)}
+                      </span>
+                    )}
+                    <Tag color="success" icon={<HeartFilled />} style={{ margin: 0 }}>
+                      Favori
+                    </Tag>
+                  </div>
                 </div>
 
                 {s.advisorNote && (

@@ -122,7 +122,7 @@ exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid
             ? `👗 ${(_b = dayLabels[oneri.dayIndex]) !== null && _b !== void 0 ? _b : 'Bugün'} için kombin hazır!`
             : '👗 Yeni Kombin Önerisi!',
         body: 'Stilistin sana bir kombin hazırladı. Hemen bak!',
-        link: '/kombin',
+        link: '/kombin?tab=history',
     });
 });
 /**

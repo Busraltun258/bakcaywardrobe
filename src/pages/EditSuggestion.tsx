@@ -1,10 +1,12 @@
 import {
   ArrowLeftOutlined,
+  CalendarOutlined,
   CheckOutlined,
   PlusOutlined,
   SaveOutlined,
   WarningFilled,
 } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import {
   Alert,
   App,
@@ -44,6 +46,11 @@ import {
   OutfitSuggestion,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import {
+  sortByCustomOrder,
+  subscribeWardrobeOrders,
+  WardrobeOrders,
+} from '../utils/wardrobeOrder'
 
 const EditSuggestion: React.FC = () => {
   const { suggestionId } = useParams<{ suggestionId: string }>()
@@ -61,6 +68,13 @@ const EditSuggestion: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [enlarged, setEnlarged] = useState<ClothingItem | null>(null)
   const [ownerHint, setOwnerHint] = useState<string | null>(null)
+  const [orders, setOrders] = useState<WardrobeOrders>({})
+
+  // Sahip kullanıcının kategori sıralamasını dinle
+  useEffect(() => {
+    if (!ownerHint) return
+    return subscribeWardrobeOrders(ownerHint, setOrders)
+  }, [ownerHint])
 
   // 1) Öneriyi çek + requesterUid'i hint olarak yakala (dolabı erken yüklemek için)
   useEffect(() => {
@@ -125,9 +139,18 @@ const EditSuggestion: React.FC = () => {
   }, [wardrobe])
 
   const filtered = useMemo(() => {
-    if (catFilter === 'all') return wardrobe
-    return wardrobe.filter((c) => c.category === catFilter)
-  }, [wardrobe, catFilter])
+    const base = catFilter === 'all' ? wardrobe : wardrobe.filter((c) => c.category === catFilter)
+    if (catFilter === 'all') {
+      const result: ClothingItem[] = []
+      CATEGORIES.forEach((c) => {
+        const inCat = base.filter((x) => x.category === c.key)
+        result.push(...sortByCustomOrder(inCat, orders[c.key]))
+      })
+      result.push(...base.filter((x) => !CATEGORIES.find((c) => c.key === x.category)))
+      return result
+    }
+    return sortByCustomOrder(base, orders[catFilter])
+  }, [wardrobe, catFilter, orders])
 
   const selectedItems = useMemo(
     () => Array.from(selected).map((id) => wardrobe.find((w) => w.id === id)).filter(Boolean) as ClothingItem[],
@@ -230,6 +253,23 @@ const EditSuggestion: React.FC = () => {
         </div>
       )}
 
+      {(request?.requestDate || request?.weekStartDate) && (
+        <div style={styles.requestMeta}>
+          <CalendarOutlined style={{ color: COLORS.primary, marginRight: 6 }} />
+          <strong style={{ color: COLORS.text }}>İstek tarihi: </strong>
+          {request?.requestType === 'weekly'
+            ? `${dayjs(request.weekStartDate).format('DD MMM')} - ${dayjs(request.weekStartDate).add(4, 'day').format('DD MMM YYYY')}`
+            : dayjs(request.requestDate).format('DD MMMM YYYY, dddd')}
+        </div>
+      )}
+
+      {request?.note && (
+        <div style={styles.requestNote}>
+          <strong style={{ color: COLORS.text }}>Kullanıcı notu:</strong>{' '}
+          <em>"{request.note}"</em>
+        </div>
+      )}
+
       {suggestion.comment && (
         <Alert
           type="error"
@@ -290,7 +330,7 @@ const EditSuggestion: React.FC = () => {
       </div>
 
       {loading ? (
-        <div style={styles.grid}>
+        <div className="bk-wardrobe-grid-compact">
           {Array.from({ length: 9 }).map((_, i) => (
             <div key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 12 }} />
           ))}
@@ -298,7 +338,7 @@ const EditSuggestion: React.FC = () => {
       ) : filtered.length === 0 ? (
         <Empty description="Bu kategoride parça yok" />
       ) : (
-        <div style={styles.grid}>
+        <div className="bk-wardrobe-grid-compact">
           {filtered.map((item) => {
             const isSelected = selected.has(item.id)
             return (
@@ -438,6 +478,25 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(124,140,255,0.10)',
     border: `1px solid ${COLORS.border}`,
     marginBottom: 10,
+  },
+  requestMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    padding: '8px 10px',
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  requestNote: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    padding: '8px 10px',
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    marginBottom: 10,
+    fontStyle: 'italic' as const,
   },
   selectedRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
   selThumbWrap: { position: 'relative' as const },

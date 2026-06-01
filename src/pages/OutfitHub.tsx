@@ -7,10 +7,10 @@ import {
   DeleteOutlined,
   EnvironmentOutlined,
   HeartFilled,
-  HeartOutlined,
   HistoryOutlined,
   InboxOutlined,
   PlusOutlined,
+  SearchOutlined,
   SendOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
@@ -23,6 +23,7 @@ import {
   Empty,
   Input,
   Modal,
+  Rate,
   Segmented,
   Select,
   Skeleton,
@@ -40,9 +41,10 @@ import {
   query,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
@@ -128,13 +130,50 @@ const OutfitHub: React.FC = () => {
   const [loadingReqs, setLoadingReqs] = useState(true)
   const [lightboxSlides, setLightboxSlides] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
-  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'new' | 'history'>(
+    searchParams.get('tab') === 'history' ? 'history' : 'new',
+  )
+  const [historySearch, setHistorySearch] = useState('')
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
     setLightboxSlides(items)
     setLightboxIndex(idx)
   }
+
+  // Tüm değerlendirilmemiş (liked=null) önerileri "gördüm" olarak işaretle.
+  // Badge'i temizler ama yıldız vermek hâlâ mümkün.
+  const markAllSeen = async () => {
+    const unrated = suggestions.filter((s) => s.liked === null || s.liked === undefined)
+    if (unrated.length === 0) {
+      message.info('Zaten her şeyi değerlendirmişsin')
+      return
+    }
+    try {
+      // 500'lü chunk'lar (firestore batch limit)
+      for (let i = 0; i < unrated.length; i += 400) {
+        const chunk = unrated.slice(i, i + 400)
+        const batch = writeBatch(db)
+        chunk.forEach((s) => {
+          batch.update(doc(db, 'outfitSuggestions', s.id), {
+            liked: 'yes',
+            feedbackAt: Date.now(),
+          })
+        })
+        await batch.commit()
+      }
+      message.success(`${unrated.length} öneri okundu işaretlendi`)
+    } catch (e) {
+      console.error(e)
+      message.error('İşaretlenemedi')
+    }
+  }
+
+  const unreadCount = useMemo(
+    () => suggestions.filter((s) => s.liked === null || s.liked === undefined).length,
+    [suggestions],
+  )
 
   useEffect(() => {
     if (!user) return
@@ -212,11 +251,14 @@ const OutfitHub: React.FC = () => {
     })
   }, [user])
 
-  // Hava durumu — kullanıcı il/ilçe seçtiyse onu kullan, yoksa konum izniyle GPS
+  // Hava durumu — kullanıcı il/ilçe seçtiyse onu kullan, yoksa konum izniyle GPS.
+  // Seçilen tarih bugünden ileriyse o günün forecast'ı çekilir; bugünse current.
+  const targetDate =
+    requestType === 'weekly' ? weekStart.format('YYYY-MM-DD') : requestDate.format('YYYY-MM-DD')
+
   useEffect(() => {
-    const cacheKey = `bk_weather_${location?.city ?? 'auto'}_${location?.district ?? ''}`
+    const cacheKey = `bk_weather_${location?.city ?? 'auto'}_${location?.district ?? ''}_${targetDate}`
     const TTL = 30 * 60 * 1000
-    // Konum değişti — eski şehrin verisini hemen temizle (kullanıcı eski sıcaklığı görmesin)
     setWeather((prev) =>
       prev && prev.city === (location?.city ?? '') && prev.district === location?.district
         ? prev
@@ -235,12 +277,30 @@ const OutfitHub: React.FC = () => {
 
     const applyCoords = async (lat: number, lon: number, city: string, district?: string) => {
       try {
-        const res = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`,
-        )
-        const data = await res.json()
-        const code = data.current?.weather_code ?? 0
-        const temp = data.current?.temperature_2m ?? 0
+        const today = dayjs().startOf('day')
+        const target = dayjs(targetDate)
+        const dayDiff = target.diff(today, 'day')
+        let temp = 0
+        let code = 0
+        // Open-Meteo daily forecast 0-15 gün arası. Bugün dahil.
+        if (dayDiff >= 0 && dayDiff <= 15) {
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+              `&daily=temperature_2m_max,weather_code&timezone=auto` +
+              `&start_date=${targetDate}&end_date=${targetDate}`,
+          )
+          const data = await res.json()
+          temp = data.daily?.temperature_2m_max?.[0] ?? 0
+          code = data.daily?.weather_code?.[0] ?? 0
+        } else {
+          // Geçmiş ya da 15 günden uzak gelecek — güncel hava
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`,
+          )
+          const data = await res.json()
+          temp = data.current?.temperature_2m ?? 0
+          code = data.current?.weather_code ?? 0
+        }
         const w: WeatherData = {
           temp: Math.round(temp),
           description: weatherCodeToDesc(code),
@@ -288,7 +348,7 @@ const OutfitHub: React.FC = () => {
       () => {},
       { timeout: 10000 },
     )
-  }, [location?.city, location?.district])
+  }, [location?.city, location?.district, targetDate])
 
   const profileName = (uid: string) =>
     profiles.find((p) => p.id === uid)?.displayName ??
@@ -299,6 +359,27 @@ const OutfitHub: React.FC = () => {
     () => [...fromMe].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
     [fromMe],
   )
+
+  // Geçmiş kombinler arama: marka/renk/etiket/açıklama/not içinde geçen kelime
+  const filteredOutgoing = useMemo(() => {
+    const term = historySearch.trim().toLowerCase()
+    if (!term) return myOutgoing
+    return myOutgoing.filter((r) => {
+      if (r.note?.toLowerCase().includes(term)) return true
+      const suggs = suggestions.filter((s) => s.requestId === r.id)
+      return suggs.some((s) => {
+        if (s.advisorNote?.toLowerCase().includes(term)) return true
+        if (s.comment?.toLowerCase().includes(term)) return true
+        return s.clothingItemIds.some((id) => {
+          const c = allClothes[id]
+          return (
+            c?.label?.toLowerCase().includes(term) ||
+            c?.description?.toLowerCase().includes(term)
+          )
+        })
+      })
+    })
+  }, [historySearch, myOutgoing, suggestions, allClothes])
 
   const myIncoming = useMemo(
     () =>
@@ -359,6 +440,17 @@ const OutfitHub: React.FC = () => {
     }
   }
 
+  const selectedDateStr =
+    requestType === 'weekly'
+      ? `${weekStart.format('DD MMM')} - ${weekStart.add(4, 'day').format('DD MMM')}`
+      : requestDate.format('DD MMMM YYYY, dddd')
+
+  const locationText = location
+    ? location.district
+      ? `${location.district}, ${location.city}`
+      : location.city
+    : 'Konum seçilmedi'
+
   const renderWeather = () => (
     <Card
       style={styles.weatherCard}
@@ -370,30 +462,29 @@ const OutfitHub: React.FC = () => {
         <span style={{ fontSize: 38 }}>{weather?.icon ?? '📍'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {weather ? (
-            <>
-              <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.text }}>
-                {weather.temp}°C · {weather.description}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                <EnvironmentOutlined style={{ color: COLORS.textMuted, fontSize: 12 }} />
-                <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>
-                  {weather.district ? `${weather.district}, ${weather.city}` : weather.city || 'Konum seçilmedi'}
-                </span>
-              </div>
-            </>
+            <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.text }}>
+              {weather.temp}°C · {weather.description}
+            </div>
           ) : (
-            <>
-              <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}>
-                Konumunu seç
-              </div>
-              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
-                Hava durumunu kombin önerine ekleyelim
-              </div>
-            </>
+            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}>
+              Hava durumu yükleniyor…
+            </div>
           )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <EnvironmentOutlined style={{ color: COLORS.textMuted, fontSize: 12 }} />
+            <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>
+              {locationText}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <CalendarOutlined style={{ color: COLORS.textMuted, fontSize: 12 }} />
+            <span style={{ color: COLORS.textMuted, fontSize: 12 }}>
+              {selectedDateStr}
+            </span>
+          </div>
         </div>
         <Tag color="blue" style={{ margin: 0 }}>
-          {weather ? 'Değiştir' : 'Seç'}
+          Değiştir
         </Tag>
       </div>
     </Card>
@@ -445,36 +536,6 @@ const OutfitHub: React.FC = () => {
         rows={2}
         style={{ marginBottom: 12 }}
       />
-
-      {requestType === 'single' ? (
-        <div style={styles.dateRow}>
-          <span style={styles.dateLabel}>
-            <CalendarOutlined style={{ marginRight: 6 }} />
-            Tarih:
-          </span>
-          <DatePicker
-            value={requestDate}
-            onChange={(d) => d && setRequestDate(d)}
-            format="DD MMM YYYY"
-            allowClear={false}
-            size="small"
-            style={{ width: 170 }}
-          />
-        </div>
-      ) : (
-        <div style={styles.dateRow}>
-          <span style={styles.dateLabel}>📅 Pzt:</span>
-          <DatePicker
-            value={weekStart}
-            onChange={(d) => d && setWeekStart(d)}
-            format="DD MMM YYYY"
-            allowClear={false}
-            picker="week"
-            size="small"
-            style={{ width: 170 }}
-          />
-        </div>
-      )}
 
       <Button
         type="primary"
@@ -569,9 +630,57 @@ const OutfitHub: React.FC = () => {
     </>
   )
 
+  // İlk değerlendirilmemiş öneriye scroll et + glow efekti
+  const scrollToUnread = () => {
+    const firstUnread = suggestions
+      .filter((s) => s.liked === null || s.liked === undefined)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]
+    if (!firstUnread) return
+    const el = document.getElementById(`suggestion-${firstUnread.id}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('bk-pulse-highlight')
+      setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+    }
+  }
+
   // Önceki kombinler — kullanıcının kendisine yapılmış TÜM önerileri admin gibi göster
   const historyTab = (
     <>
+      {unreadCount > 0 && (
+        <Card
+          style={styles.unreadBanner}
+          bodyStyle={{ padding: '10px 14px' }}
+          hoverable
+          onClick={scrollToUnread}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: COLORS.text, flex: 1 }}>
+              💡 <strong>{unreadCount}</strong> değerlendirilmemiş öneri var — tıkla, götüreyim
+            </span>
+            <Button
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation()
+                markAllSeen()
+              }}
+            >
+              Tümünü gördüm
+            </Button>
+          </div>
+        </Card>
+      )}
+      {myOutgoing.length > 0 && (
+        <Input
+          size="middle"
+          placeholder="Marka, renk, etiket ara…"
+          prefix={<SearchOutlined style={{ color: COLORS.textMuted }} />}
+          allowClear
+          value={historySearch}
+          onChange={(e) => setHistorySearch(e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+      )}
       {loadingReqs ? (
         <Card>
           <Skeleton active />
@@ -587,8 +696,19 @@ const OutfitHub: React.FC = () => {
             imageStyle={{ height: 60 }}
           />
         </Card>
+      ) : filteredOutgoing.length === 0 ? (
+        <Card>
+          <Empty
+            description={
+              <span style={{ color: COLORS.textSecondary }}>
+                "{historySearch}" için sonuç yok
+              </span>
+            }
+            imageStyle={{ height: 60 }}
+          />
+        </Card>
       ) : (
-        myOutgoing.map((r) => {
+        filteredOutgoing.map((r) => {
           const suggs = suggestions
             .filter((s) => s.requestId === r.id)
             .sort((a, b) => (a.dayIndex ?? 0) - (b.dayIndex ?? 0))
@@ -686,6 +806,11 @@ const OutfitHub: React.FC = () => {
       <LocationPicker
         open={locationOpen}
         value={location}
+        requestType={requestType}
+        requestDate={requestDate}
+        weekStart={weekStart}
+        onDateChange={setRequestDate}
+        onWeekChange={setWeekStart}
         onClose={() => setLocationOpen(false)}
         onSave={(loc) => {
           setLocation(loc)
@@ -724,11 +849,11 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           {profileName(request.toUid)[0]?.toUpperCase()}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
-            {profileName(request.toUid)}
+          <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>
+            {dayjs(request.createdAt).format('DD MMMM YYYY')}
           </div>
           <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-            {dayjs(request.createdAt).format('DD MMM HH:mm')}
+            {profileName(request.toUid)} · {dayjs(request.createdAt).format('HH:mm')}
           </div>
         </div>
         {isWeekly && <Tag color="purple">5 gün</Tag>}
@@ -738,8 +863,13 @@ const RequestThread: React.FC<RequestThreadProps> = ({
       </div>
       {request.weather && (
         <p style={styles.weatherPill}>
-          {request.weather.icon} {request.weather.temp}°C ·{' '}
-          {request.weather.description}
+          {request.weather.icon} {request.weather.temp}°C · {request.weather.description}
+          {request.weather.city && (
+            <>
+              {' · '}📍 {request.weather.district ? `${request.weather.district}, ` : ''}
+              {request.weather.city}
+            </>
+          )}
         </p>
       )}
       {request.note && (
@@ -876,13 +1006,15 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
 }) => {
   const { message } = App.useApp()
   const [comment, setComment] = useState(s.comment ?? '')
-  const [liked, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
+  const [, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
+  const [rating, setRating] = useState<number>(s.rating ?? 0)
   const [savingFeedback, setSavingFeedback] = useState(false)
 
   useEffect(() => {
     setComment(s.comment ?? '')
     setLiked(s.liked ?? null)
-  }, [s.id, s.comment, s.liked])
+    setRating(s.rating ?? 0)
+  }, [s.id, s.comment, s.liked, s.rating])
 
   // Üst seviyede yüklenmiş tüm dolaptan parçaları hızlıca seç — fetch yok
   const items = useMemo(() => {
@@ -893,14 +1025,24 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     return map
   }, [s.clothingItemIds, allClothes])
 
-  const saveFeedback = async (newLiked: 'yes' | 'no' | undefined, commentVal: string) => {
+  const saveFeedback = async (
+    newLiked: 'yes' | 'no' | undefined,
+    commentVal: string,
+    newRating?: number,
+  ) => {
     setSavingFeedback(true)
     try {
-      const patch: { comment: string; feedbackAt: number; liked?: 'yes' | 'no' } = {
+      const patch: {
+        comment: string
+        feedbackAt: number
+        liked?: 'yes' | 'no'
+        rating?: number
+      } = {
         comment: commentVal.trim(),
         feedbackAt: Date.now(),
       }
       if (newLiked !== undefined) patch.liked = newLiked
+      if (newRating !== undefined) patch.rating = newRating
       await updateDoc(doc(db, 'outfitSuggestions', s.id), patch)
       message.success('Kaydedildi')
     } catch {
@@ -910,8 +1052,23 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     }
   }
 
+  const handleRate = (val: number) => {
+    setRating(val)
+    // 5 yıldız = favori, 1-4 yıldız = beğenildi ama favori değil, 0 = nötr.
+    if (val === 0) {
+      saveFeedback(undefined, comment, val)
+      return
+    }
+    const newLiked: 'yes' | 'no' = val >= 3 ? 'yes' : 'no'
+    setLiked(newLiked)
+    saveFeedback(newLiked, comment, val)
+  }
+
   return (
-    <div style={{ ...styles.suggCard, marginTop: compact ? 8 : 10 }}>
+    <div
+      id={`suggestion-${s.id}`}
+      style={{ ...styles.suggCard, marginTop: compact ? 8 : 10 }}
+    >
       {!compact && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <ThunderboltOutlined style={{ color: COLORS.primary }} />
@@ -967,29 +1124,24 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         })}
       </div>
 
-      <div style={styles.feedbackRow}>
-        <Button
-          type={liked === 'yes' ? 'primary' : 'default'}
-          icon={liked === 'yes' ? <HeartFilled /> : <HeartOutlined />}
-          onClick={() => {
-            setLiked('yes')
-            saveFeedback('yes', comment)
-          }}
-          loading={savingFeedback && liked !== 'yes'}
-        >
-          Beğendim
-        </Button>
-        <Button
-          danger={liked === 'no'}
-          type={liked === 'no' ? 'primary' : 'default'}
-          icon={<CommentOutlined />}
-          onClick={() => {
-            setLiked('no')
-            saveFeedback('no', comment)
-          }}
-        >
-          Değişiklik İste
-        </Button>
+      <div style={styles.ratingRow}>
+        <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Puanın:</span>
+        <Rate
+          value={rating}
+          onChange={handleRate}
+          allowClear
+          style={{ fontSize: 22 }}
+        />
+        {rating === 5 && (
+          <Tag color="success" icon={<HeartFilled />} style={{ margin: 0 }}>
+            Favori
+          </Tag>
+        )}
+        {rating > 0 && rating <= 2 && (
+          <Tag color="warning" icon={<CommentOutlined />} style={{ margin: 0 }}>
+            Değişiklik
+          </Tag>
+        )}
       </div>
 
       <Input.TextArea
@@ -1013,13 +1165,28 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   )
 }
 
-/** İl/ilçe seçici modal. */
+/** İl/ilçe + tarih seçici modal. */
 const LocationPicker: React.FC<{
   open: boolean
   value: CityDistrict | null
+  requestType: RequestType
+  requestDate: Dayjs
+  weekStart: Dayjs
+  onDateChange: (d: Dayjs) => void
+  onWeekChange: (d: Dayjs) => void
   onClose: () => void
   onSave: (loc: CityDistrict) => void
-}> = ({ open, value, onClose, onSave }) => {
+}> = ({
+  open,
+  value,
+  requestType,
+  requestDate,
+  weekStart,
+  onDateChange,
+  onWeekChange,
+  onClose,
+  onSave,
+}) => {
   const [city, setCity] = useState<string>(value?.city ?? '')
   const [district, setDistrict] = useState<string>(value?.district ?? '')
 
@@ -1066,7 +1233,7 @@ const LocationPicker: React.FC<{
           }
         />
       </div>
-      <div>
+      <div style={{ marginBottom: 12 }}>
         <label style={styles.label}>İlçe (isteğe bağlı)</label>
         <Select
           value={district || undefined}
@@ -1081,6 +1248,30 @@ const LocationPicker: React.FC<{
             (option?.label as string).toLowerCase().includes(input.toLowerCase())
           }
         />
+      </div>
+      <div>
+        <label style={styles.label}>
+          <CalendarOutlined style={{ marginRight: 6 }} />
+          {requestType === 'weekly' ? 'Hafta başlangıcı (Pzt)' : 'Kombin tarihi'}
+        </label>
+        {requestType === 'weekly' ? (
+          <DatePicker
+            value={weekStart}
+            onChange={(d) => d && onWeekChange(d)}
+            format="DD MMM YYYY"
+            allowClear={false}
+            picker="week"
+            style={{ width: '100%' }}
+          />
+        ) : (
+          <DatePicker
+            value={requestDate}
+            onChange={(d) => d && onDateChange(d)}
+            format="DD MMM YYYY"
+            allowClear={false}
+            style={{ width: '100%' }}
+          />
+        )}
       </div>
     </Modal>
   )
@@ -1112,17 +1303,10 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 8px',
   },
   cardTitle: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600 },
-  dateRow: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'center',
-    marginBottom: 14,
-    flexWrap: 'wrap',
-  },
-  dateLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: 500,
+  unreadBanner: {
+    marginBottom: 12,
+    background: 'rgba(251,191,36,0.08)',
+    border: '1px solid rgba(251,191,36,0.25)',
   },
   sweetNote: {
     margin: '12px 0 0',
@@ -1177,6 +1361,15 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitBoxOrient: 'vertical' as const,
   },
   feedbackRow: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  ratingRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap' as const,
+    padding: '8px 0',
+    marginBottom: 6,
+    borderBottom: `1px solid ${COLORS.border}`,
+  },
   tabCount: {
     marginLeft: 6,
     background: COLORS.primary,

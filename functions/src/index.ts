@@ -97,7 +97,7 @@ export const onYeniOneri = onDocumentCreated('outfitSuggestions/{sid}', async (e
       ? `👗 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombin hazır!`
       : '👗 Yeni Kombin Önerisi!',
     body: 'Stilistin sana bir kombin hazırladı. Hemen bak!',
-    link: '/kombin',
+    link: '/kombin?tab=history',
   })
 })
 

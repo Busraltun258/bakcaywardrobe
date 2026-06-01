@@ -264,13 +264,13 @@ const Lightbox: React.FC<Props> = ({
         @media (max-width: 720px) {
           .bk-lightbox-backdrop > div {
             max-width: 100% !important;
-            border-radius: 20px 20px 0 0 !important;
-            margin: auto 0 0 !important;
-            max-height: 94vh !important;
+            border-radius: 16px !important;
+            max-height: 90vh !important;
           }
           .bk-lightbox-backdrop {
-            align-items: flex-end !important;
-            padding: 0 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 12px !important;
           }
         }
       `}</style>

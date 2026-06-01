@@ -1,6 +1,5 @@
 import {
   ArrowLeftOutlined,
-  CalendarOutlined,
   CheckOutlined,
   CloseOutlined,
   DeleteOutlined,
@@ -15,6 +14,22 @@ import {
   Input,
   Upload,
 } from 'antd'
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import Lightbox from '../components/Lightbox'
 import {
   collection,
@@ -25,7 +40,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import SmartImage from '../components/SmartImage'
@@ -56,9 +71,18 @@ const CategoryDetail: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [customOrder, setCustomOrder] = useState<string[]>([])
-  const draggedId = useRef<string | null>(null)
+
+  // dnd-kit sensörleri: mouse 5px hareket veya touch 200ms basılı tutma → drag başlar.
+  // Bu sayede tek tıklama (lightbox açmak) ile sürükleme çakışmaz.
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+  )
 
   const cacheKey = user && categoryKey ? `bk_clothes_${user.uid}_${categoryKey}` : null
   const orderKey = user && categoryKey ? `bk_order_${user.uid}_${categoryKey}` : null
@@ -193,47 +217,24 @@ const CategoryDetail: React.FC = () => {
     setEditingId(null)
   }
 
-  const insertToday = () => {
-    const d = new Date()
-    const dateStr = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`
-    setEditLabel((prev) => (prev ? `${prev} ${dateStr}` : dateStr))
-  }
-
-  const handleDragStart = (id: string) => {
-    draggedId.current = id
-  }
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault()
-    setDragOverId(id)
-  }
-  const handleDrop = (targetId: string) => {
-    if (!draggedId.current || draggedId.current === targetId) {
-      draggedId.current = null
-      setDragOverId(null)
-      return
-    }
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
     const ids = orderedItems.map((i) => i.id)
-    const fromIdx = ids.indexOf(draggedId.current)
-    const toIdx = ids.indexOf(targetId)
+    const fromIdx = ids.indexOf(String(active.id))
+    const toIdx = ids.indexOf(String(over.id))
     if (fromIdx === -1 || toIdx === -1) return
-    ids.splice(fromIdx, 1)
-    ids.splice(toIdx, 0, draggedId.current)
-    setCustomOrder(ids)
+    const newIds = arrayMove(ids, fromIdx, toIdx)
+    setCustomOrder(newIds)
     if (orderKey) {
       try {
-        localStorage.setItem(orderKey, JSON.stringify(ids))
+        localStorage.setItem(orderKey, JSON.stringify(newIds))
       } catch {}
     }
     // Firestore'a kalıcı kaydet — admin de aynı sırayı görsün
     if (user && categoryKey) {
-      saveWardrobeOrder(user.uid, categoryKey, ids)
+      saveWardrobeOrder(user.uid, categoryKey, newIds)
     }
-    draggedId.current = null
-    setDragOverId(null)
-  }
-  const handleDragEnd = () => {
-    draggedId.current = null
-    setDragOverId(null)
   }
 
   if (!category) {
@@ -316,97 +317,34 @@ const CategoryDetail: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="bk-wardrobe-grid">
-            {orderedItems.map((item) => (
-              <div
-                key={item.id}
-                className="bk-card-hover"
-                style={{
-                  ...styles.card,
-                  ...(dragOverId === item.id ? styles.cardDragOver : {}),
-                }}
-                draggable
-                onDragStart={() => handleDragStart(item.id)}
-                onDragOver={(e) => handleDragOver(e, item.id)}
-                onDrop={() => handleDrop(item.id)}
-                onDragEnd={handleDragEnd}
-              >
-                <SmartImage
-                  cacheKey={item.id}
-                  src={clothingItemImageSrc(item)}
-                  style={{ width: '100%', height: '100%', cursor: 'pointer' }}
-                  onClick={() => setEnlargedItem(item)}
-                />
-
-                {item.ownerId === user?.uid && editingId !== item.id && (
-                  <Button
-                    type="text"
-                    danger
-                    shape="circle"
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDelete(item)
-                    }}
-                    style={styles.deleteBtn}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={orderedItems.map((i) => i.id)}
+              strategy={rectSortingStrategy}
+            >
+              <div className="bk-wardrobe-grid">
+                {orderedItems.map((item) => (
+                  <SortableCell
+                    key={item.id}
+                    item={item}
+                    isOwner={item.ownerId === user?.uid}
+                    isEditing={editingId === item.id}
+                    editLabel={editLabel}
+                    setEditLabel={setEditLabel}
+                    onOpen={() => setEnlargedItem(item)}
+                    onDelete={() => handleDelete(item)}
+                    onStartEdit={() => startEdit(item)}
+                    onSaveLabel={() => saveLabel(item)}
+                    onCancelEdit={() => setEditingId(null)}
                   />
-                )}
-
-                <div style={styles.cardOverlay}>
-                  {editingId === item.id ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-                      <div style={{ display: 'flex', gap: 4, width: '100%' }}>
-                        <Input
-                          size="small"
-                          value={editLabel}
-                          onChange={(e) => setEditLabel(e.target.value)}
-                          placeholder="Etiket ekle"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveLabel(item)
-                            if (e.key === 'Escape') setEditingId(null)
-                          }}
-                          style={{ flex: 1, fontSize: 12 }}
-                        />
-                        <Button
-                          size="small"
-                          type="primary"
-                          icon={<CheckOutlined />}
-                          onClick={() => saveLabel(item)}
-                        />
-                        <Button
-                          size="small"
-                          icon={<CloseOutlined />}
-                          onClick={() => setEditingId(null)}
-                        />
-                      </div>
-                      <Button
-                        size="small"
-                        icon={<CalendarOutlined />}
-                        onClick={insertToday}
-                        style={{ background: 'rgba(124,140,255,0.18)', border: 'none', color: '#fff', fontSize: 11 }}
-                      >
-                        Bugünün tarihi
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      {item.label && (
-                        <div style={styles.labelText} title={item.label}>
-                          {item.label}
-                        </div>
-                      )}
-                      <button type="button" onClick={() => startEdit(item)} style={styles.labelBtn}>
-                        <EditOutlined style={{ marginRight: 6 }} />
-                        {item.label ? 'Düzenle' : 'Açıklama'}
-                      </button>
-                    </>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -454,6 +392,125 @@ const CategoryDetail: React.FC = () => {
   )
 }
 
+/**
+ * Dokunmatik ve mouse ile sürüklenebilir tek kare.
+ * useSortable: drag listener'larını ve transform'u sağlar.
+ */
+const SortableCell: React.FC<{
+  item: ClothingItem
+  isOwner: boolean
+  isEditing: boolean
+  editLabel: string
+  setEditLabel: (v: string) => void
+  onOpen: () => void
+  onDelete: () => void
+  onStartEdit: () => void
+  onSaveLabel: () => void
+  onCancelEdit: () => void
+}> = ({
+  item,
+  isOwner,
+  isEditing,
+  editLabel,
+  setEditLabel,
+  onOpen,
+  onDelete,
+  onStartEdit,
+  onSaveLabel,
+  onCancelEdit,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style: React.CSSProperties = {
+    ...styles.card,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 1,
+    boxShadow: isDragging
+      ? '0 10px 30px rgba(124,140,255,0.5)'
+      : undefined,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="bk-card-hover"
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      <SmartImage
+        cacheKey={item.id}
+        src={clothingItemImageSrc(item)}
+        style={{ width: '100%', height: '100%', cursor: 'pointer' }}
+        onClick={onOpen}
+      />
+
+      {isOwner && !isEditing && (
+        <Button
+          type="text"
+          danger
+          shape="circle"
+          size="small"
+          icon={<DeleteOutlined />}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          style={styles.deleteBtn}
+        />
+      )}
+
+      <div style={styles.cardOverlay} onPointerDown={(e) => e.stopPropagation()}>
+        {isEditing ? (
+          <div style={{ display: 'flex', gap: 4, width: '100%' }}>
+            <Input
+              size="small"
+              value={editLabel}
+              onChange={(e) => setEditLabel(e.target.value)}
+              placeholder="Marka, renk…"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onSaveLabel()
+                if (e.key === 'Escape') onCancelEdit()
+              }}
+              style={{ flex: 1, fontSize: 12 }}
+            />
+            <Button
+              size="small"
+              type="primary"
+              icon={<CheckOutlined />}
+              onClick={onSaveLabel}
+            />
+            <Button size="small" icon={<CloseOutlined />} onClick={onCancelEdit} />
+          </div>
+        ) : (
+          <>
+            {item.label && (
+              <div style={styles.labelText} title={item.label}>
+                {item.label}
+              </div>
+            )}
+            <button type="button" onClick={onStartEdit} style={styles.labelBtn}>
+              <EditOutlined style={{ marginRight: 6 }} />
+              {item.label ? 'Düzenle' : 'Etiket ekle'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const styles: Record<string, React.CSSProperties> = {
   header: { marginBottom: 8 },
   hero: {
@@ -495,11 +552,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     background: COLORS.bgCard,
     aspectRatio: '1',
-    cursor: 'grab',
-  },
-  cardDragOver: {
-    outline: `2px solid ${COLORS.primary}`,
-    outlineOffset: 2,
+    touchAction: 'none' as const,
   },
   cardOverlay: {
     position: 'absolute' as const,

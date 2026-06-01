@@ -53,6 +53,8 @@ export interface OutfitSuggestion {
   feedbackAt: number | null
   /** Haftalık öneri için: hangi gün (0=Pzt, 6=Pzr). */
   dayIndex?: number
+  /** 1-5 yıldız değerlendirme. 5 yıldız favori demek. */
+  rating?: 1 | 2 | 3 | 4 | 5
 }
 
 /**

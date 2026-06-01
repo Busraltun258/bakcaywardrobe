@@ -55,15 +55,35 @@ const AdminDrafts: React.FC = () => {
   const [clothesCache, setClothesCache] = useState<Record<string, ClothingItem>>({})
   const [loading, setLoading] = useState(true)
 
+  // 1) localStorage cache'ten anında render (cold start için)
   useEffect(() => {
     if (!user) return
+    const cacheKey = `bk_drafts_${user.uid}`
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        setDrafts(JSON.parse(cached) as OutfitDraft[])
+        setLoading(false)
+      }
+    } catch {}
+
     const q = query(collection(db, 'outfitDrafts'), where('advisorUid', '==', user.uid))
-    return onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitDraft))
-      list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-      setDrafts(list)
-      setLoading(false)
-    })
+    return onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitDraft))
+        list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        setDrafts(list)
+        setLoading(false)
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(list))
+        } catch {}
+      },
+      (err) => {
+        console.error('outfitDrafts subscribe error:', err)
+        setLoading(false)
+      },
+    )
   }, [user])
 
   // Profilleri yükle
@@ -84,26 +104,49 @@ const AdminDrafts: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drafts.map((d) => d.id).join('|')])
 
-  // Görselleri batch ile yükle
+  // Görselleri batch ile yükle — localStorage'tan anında hidrate et, sonra paralel chunk fetch
   useEffect(() => {
+    // localStorage'tan tüm taslak görsellerini hydrate
+    try {
+      const cached = localStorage.getItem('bk_drafts_clothes')
+      if (cached) {
+        const obj = JSON.parse(cached) as Record<string, ClothingItem>
+        setClothesCache((prev) => ({ ...obj, ...prev }))
+      }
+    } catch {}
+
     const allIds = drafts.flatMap((d) => d.clothingItemIds)
     const need = Array.from(new Set(allIds)).filter((id) => !clothesCache[id])
     if (need.length === 0) return
+
     ;(async () => {
-      const map: Record<string, ClothingItem> = {}
+      // Tüm chunk'ları PARALEL çek (sıralı değil)
+      const chunks: string[][] = []
       for (let i = 0; i < need.length; i += 30) {
-        const chunk = need.slice(i, i + 30)
-        try {
-          const q = query(collection(db, 'clothes'), where(documentId(), 'in', chunk))
-          const snap = await getDocs(q)
-          snap.docs.forEach((d) => {
-            map[d.id] = { id: d.id, ...d.data() } as ClothingItem
-          })
-        } catch {
-          /* ignore */
-        }
+        chunks.push(need.slice(i, i + 30))
       }
-      setClothesCache((prev) => ({ ...prev, ...map }))
+      const results = await Promise.all(
+        chunks.map(async (chunk) => {
+          try {
+            const q = query(collection(db, 'clothes'), where(documentId(), 'in', chunk))
+            const snap = await getDocs(q)
+            return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ClothingItem))
+          } catch {
+            return []
+          }
+        }),
+      )
+      const map: Record<string, ClothingItem> = {}
+      results.flat().forEach((c) => {
+        map[c.id] = c
+      })
+      setClothesCache((prev) => {
+        const merged = { ...prev, ...map }
+        try {
+          localStorage.setItem('bk_drafts_clothes', JSON.stringify(merged))
+        } catch {}
+        return merged
+      })
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drafts.map((d) => d.id).join('|')])

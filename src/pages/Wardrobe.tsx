@@ -1,5 +1,4 @@
-import { RightOutlined, SearchOutlined, SkinOutlined } from '@ant-design/icons'
-import { Input, Statistic } from 'antd'
+import { RightOutlined } from '@ant-design/icons'
 import {
   collection,
   getCountFromServer,
@@ -7,9 +6,10 @@ import {
   query,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import LoveSphere from '../components/LoveSphere'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
@@ -18,7 +18,6 @@ import { CATEGORIES } from '../types'
 const Wardrobe: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [search, setSearch] = useState('')
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [totalCount, setTotalCount] = useState<number | null>(null)
 
@@ -98,11 +97,6 @@ const Wardrobe: React.FC = () => {
     return () => unsub()
   }, [user])
 
-  const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase()
-    if (!s) return CATEGORIES
-    return CATEGORIES.filter((c) => c.label.toLowerCase().includes(s))
-  }, [search])
 
   return (
     <AppLayout>
@@ -116,28 +110,17 @@ const Wardrobe: React.FC = () => {
             </p>
           </div>
           <div style={styles.heroStat}>
-            <Statistic
-              value={totalCount ?? 0}
-              valueStyle={{ color: COLORS.text, fontSize: 28, fontWeight: 700 }}
-              suffix={<span style={styles.heroStatSuffix}>parça</span>}
-            />
+            <span style={styles.statValue}>{totalCount ?? 0}</span>
+            <span style={styles.heroStatSuffix}>parça</span>
           </div>
         </section>
 
-        {/* Search */}
-        <Input
-          size="large"
-          placeholder="Kategori ara…"
-          prefix={<SearchOutlined style={{ color: COLORS.textMuted }} />}
-          allowClear
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ marginBottom: 18 }}
-        />
+        {/* Aşk Küresi — Buşra & Kamuran için günlük check-in */}
+        <LoveSphere />
 
         {/* Categories grid */}
         <div style={styles.grid}>
-          {filtered.map((cat) => {
+          {CATEGORIES.map((cat) => {
             const count = counts[cat.key] ?? 0
             return (
               <button
@@ -148,7 +131,7 @@ const Wardrobe: React.FC = () => {
                 style={styles.card}
               >
                 <div style={styles.cardIcon}>
-                  <span style={{ fontSize: 30 }}>{cat.emoji}</span>
+                  <span style={{ fontSize: 18 }}>{cat.emoji}</span>
                 </div>
                 <div style={styles.cardBody}>
                   <div style={styles.cardLabel}>{cat.label}</div>
@@ -160,14 +143,6 @@ const Wardrobe: React.FC = () => {
               </button>
             )
           })}
-          {filtered.length === 0 && (
-            <div style={styles.empty}>
-              <SkinOutlined style={{ fontSize: 32, color: COLORS.textMuted }} />
-              <p style={{ color: COLORS.textSecondary, margin: '12px 0 0' }}>
-                "{search}" için sonuç yok
-              </p>
-            </div>
-          )}
         </div>
       </div>
     </AppLayout>
@@ -196,50 +171,57 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   heroStat: {
-    background: COLORS.gradientSoft,
+    display: 'inline-flex',
+    alignItems: 'baseline',
+    gap: 4,
+    background: 'rgba(124,140,255,0.08)',
     border: `1px solid ${COLORS.border}`,
-    padding: '12px 18px',
-    borderRadius: 16,
-    minWidth: 110,
-    textAlign: 'right' as const,
+    padding: '4px 10px',
+    borderRadius: 10,
+    flexShrink: 0,
+  },
+  statValue: {
+    color: COLORS.text,
+    fontWeight: 700,
+    fontSize: 14,
   },
   heroStatSuffix: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: 500,
-    marginLeft: 4,
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: 12,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: 8,
   },
   card: {
     display: 'flex',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
     background: COLORS.bgCard,
-    padding: '16px 18px',
-    borderRadius: 16,
+    padding: '8px 12px',
+    borderRadius: 12,
     cursor: 'pointer',
     width: '100%',
     textAlign: 'left' as const,
     fontFamily: 'inherit',
   },
   cardIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     background: 'rgba(124, 140, 255, 0.10)',
     border: '1px solid rgba(124, 140, 255, 0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    fontSize: 18,
   },
   cardBody: { flex: 1 },
   cardLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 600,
     color: COLORS.text,
     marginBottom: 2,

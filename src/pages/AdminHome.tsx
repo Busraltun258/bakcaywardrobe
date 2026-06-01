@@ -39,6 +39,7 @@ import {
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import LoveSphere from '../components/LoveSphere'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
@@ -170,6 +171,9 @@ const AdminHome: React.FC = () => {
           </h1>
           <p style={styles.heroSub}>Gelen istekleri yanıtla, önerilerini yönet</p>
         </div>
+
+        {/* Aşk Küresi — Buşra & Kamuran için günlük check-in */}
+        <LoveSphere />
 
         {/* Stats */}
         <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
@@ -487,6 +491,29 @@ const SuggestionsList: React.FC<{
                 {likedTag}
               </div>
 
+              {r?.weather && (
+                <div style={styles.metaPill}>
+                  {r.weather.icon} {r.weather.temp}°C · {r.weather.description}
+                  {r.weather.city && (
+                    <> · 📍 {r.weather.district ? `${r.weather.district}, ` : ''}{r.weather.city}</>
+                  )}
+                </div>
+              )}
+              {r && (r.requestDate || r.weekStartDate) && (
+                <div style={styles.metaPill}>
+                  <CalendarOutlined style={{ marginRight: 4 }} />
+                  {r.requestType === 'weekly'
+                    ? `${dayjs(r.weekStartDate).format('DD MMM')} - ${dayjs(r.weekStartDate).add(4, 'day').format('DD MMM')}`
+                    : dayjs(r.requestDate).format('DD MMMM YYYY, dddd')}
+                </div>
+              )}
+              {r?.note && (
+                <p style={styles.requestNote}>
+                  <strong style={{ color: COLORS.text }}>Talep notu:</strong>{' '}
+                  <em>"{r.note}"</em>
+                </p>
+              )}
+
               <div style={styles.suggThumbs}>
                 {(s.clothingItemIds ?? []).map((id) => {
                   const c = clothesCache[id]
@@ -550,6 +577,26 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '-0.6px',
   },
   heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
+  metaPill: {
+    display: 'inline-block' as const,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    background: 'rgba(124,140,255,0.10)',
+    border: `1px solid ${COLORS.border}`,
+    padding: '3px 8px',
+    borderRadius: 999,
+    margin: '0 6px 6px 0',
+  },
+  requestNote: {
+    margin: '6px 0 10px',
+    padding: '8px 10px',
+    background: 'rgba(255,255,255,0.04)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic' as const,
+  },
   suggThumbs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   thumbCol: {
     display: 'flex',
