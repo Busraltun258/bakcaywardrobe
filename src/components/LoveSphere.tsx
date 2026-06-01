@@ -29,43 +29,86 @@ interface LoveData {
   lastSharedDay?: string
 }
 
+const LOVE_CACHE_KEY = 'bk_love_streak'
+const ROLE_CACHE_KEY = 'bk_love_role'
+
 const LoveSphere: React.FC = () => {
   const { user, isAdmin } = useAuth()
   const { message } = App.useApp()
-  const [data, setData] = useState<LoveData | null>(null)
+
+  // localStorage'tan anında hidrate et — cold start'ta beklemesin
+  const [data, setData] = useState<LoveData | null>(() => {
+    try {
+      const cached = localStorage.getItem(LOVE_CACHE_KEY)
+      if (cached) return JSON.parse(cached) as LoveData
+    } catch {}
+    return null
+  })
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [cachedRole, setCachedRole] = useState<'busra' | 'kamuran' | 'none' | null>(() => {
+    try {
+      const r = localStorage.getItem(ROLE_CACHE_KEY)
+      if (r === 'busra' || r === 'kamuran' || r === 'none') return r
+    } catch {}
+    return null
+  })
   const [animating, setAnimating] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Kullanıcının kim olduğunu (Buşra mı, Kamuran mı) profilden anla
+  // Profili çek — fakat cache varsa beklemeden render et
   useEffect(() => {
     if (!user) return
+    // isAdmin zaten useAuth'tan geliyor — Buşra için profil fetch'i beklemeye gerek yok
+    if (isAdmin) {
+      setCachedRole('busra')
+      try {
+        localStorage.setItem(ROLE_CACHE_KEY, 'busra')
+      } catch {}
+      return
+    }
     ;(async () => {
       try {
         const snap = await getDoc(doc(db, 'profiles', user.uid))
-        if (snap.exists()) setProfile({ id: snap.id, ...snap.data() } as UserProfile)
+        if (snap.exists()) {
+          const p = { id: snap.id, ...snap.data() } as UserProfile
+          setProfile(p)
+          const isKamuran = (p.username ?? '').toLowerCase() === KAMURAN_USERNAME.toLowerCase()
+          const role: 'kamuran' | 'none' = isKamuran ? 'kamuran' : 'none'
+          setCachedRole(role)
+          try {
+            localStorage.setItem(ROLE_CACHE_KEY, role)
+          } catch {}
+        }
       } catch {}
     })()
-  }, [user])
+  }, [user, isAdmin])
 
-  // Paylaşılan doc'u dinle
+  // Paylaşılan doc'u dinle + localStorage'a yaz
   useEffect(() => {
     return onSnapshot(doc(db, 'loveStreak', 'shared'), (snap) => {
-      setData((snap.data() as LoveData) ?? {})
+      const d = (snap.data() as LoveData) ?? {}
+      setData(d)
+      try {
+        localStorage.setItem(LOVE_CACHE_KEY, JSON.stringify(d))
+      } catch {}
     })
   }, [])
 
-  // Rolü belirle
+  // Rolü belirle — önce profile, sonra cache, sonra isAdmin
   const role: 'busra' | 'kamuran' | null = useMemo(() => {
-    if (!profile) return null
     if (isAdmin) return 'busra'
-    if ((profile.username ?? '').toLowerCase() === KAMURAN_USERNAME.toLowerCase()) {
-      return 'kamuran'
+    if (profile) {
+      return (profile.username ?? '').toLowerCase() === KAMURAN_USERNAME.toLowerCase()
+        ? 'kamuran'
+        : null
     }
+    // Cache'ten al — fetch tamamlanana kadar
+    if (cachedRole === 'busra' || cachedRole === 'kamuran') return cachedRole
     return null
-  }, [profile, isAdmin])
+  }, [profile, isAdmin, cachedRole])
 
-  // Bu component sadece Buşra ve Kamuran için var
+  // Sadece Buşra ve Kamuran görür; cache 'none' ise asla görünmesin
+  if (cachedRole === 'none') return null
   if (!role) return null
 
   const today = dayjs().format('YYYY-MM-DD')
@@ -141,17 +184,18 @@ const LoveSphere: React.FC = () => {
 
   return (
     <Card
+      className="bk-love-card"
       style={styles.card}
-      bodyStyle={{ padding: 14 }}
+      bodyStyle={{ padding: 10 }}
       hoverable={!meToday}
       onClick={meToday ? undefined : handleTap}
     >
       <div style={styles.row}>
-        <div style={{ ...styles.sphere, color: heartColor }}>
+        <div style={{ ...styles.sphere, color: heartColor }} className="bk-love-sphere">
           <HeartFilled
+            className="bk-love-icon"
             style={{
-              fontSize: 48,
-              filter: `drop-shadow(0 0 12px ${heartColor}66)`,
+              filter: `drop-shadow(0 0 10px ${heartColor}66)`,
               animation: animating
                 ? 'bk-love-burst 1.2s ease-out'
                 : bothToday
@@ -163,15 +207,15 @@ const LoveSphere: React.FC = () => {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.title}>{statusIcon} Aşk Durağı</div>
           <div style={styles.statusLine}>{statusText}</div>
-          <div style={styles.statsRow}>
+          <div style={styles.statsRow} className="bk-love-stats">
             <span style={styles.statChip}>
               <strong>{streak}</strong> seri
             </span>
-            <span style={styles.statChip}>
+            <span style={styles.statChip} className="bk-love-extra">
               <strong>{total}</strong> tamamlanmış gün
             </span>
             {data?.started && (
-              <span style={styles.statChip}>
+              <span style={styles.statChip} className="bk-love-extra">
                 {dayjs(data.started).format('DD MMM')}'den beri
               </span>
             )}
@@ -179,9 +223,9 @@ const LoveSphere: React.FC = () => {
         </div>
         <div style={styles.cta}>
           {meToday ? (
-            <span style={styles.doneTag}>✓ Bugün</span>
+            <span style={styles.doneTag}>✓</span>
           ) : (
-            <span style={styles.tapTag}>Sevgi göster</span>
+            <span style={styles.tapTag}>💗 Sev</span>
           )}
         </div>
       </div>
@@ -215,8 +259,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
   },
   sphere: {
-    width: 64,
-    height: 64,
+    width: 44,
+    height: 44,
+    fontSize: 30,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

@@ -171,21 +171,22 @@ const OutfitDiary: React.FC = () => {
     if (!p) return null
     const allIds = p.suggestion.clothingItemIds
     const items = allIds
-      .slice(0, 2)
+      .slice(0, 1)
       .map((id) => clothes[id])
       .filter(Boolean) as ClothingItem[]
     if (items.length === 0) return null
+    // Absolute positioned overlay — tarih sayısının yerini değiştirmesin
     return (
-      <div style={styles.cellThumbs}>
+      <div style={styles.cellOverlay}>
         {items.map((c) => (
           <SmartImage
             key={c.id}
             cacheKey={c.id}
             src={clothingItemImageSrc(c)}
-            style={{ width: 20, height: 20, borderRadius: 4 }}
+            style={{ width: 14, height: 14, borderRadius: 3 }}
           />
         ))}
-        {allIds.length > 2 && <span style={styles.cellMore}>···</span>}
+        {allIds.length > 1 && <span style={styles.cellMore}>·</span>}
       </div>
     )
   }
@@ -350,17 +351,21 @@ const styles: Record<string, React.CSSProperties> = {
   },
   heroSub: { margin: '4px 0 14px', color: COLORS.textSecondary, fontSize: 14 },
   cardTitle: { fontSize: 14, fontWeight: 600 },
-  cellThumbs: {
+  cellOverlay: {
+    position: 'absolute' as const,
+    bottom: 2,
+    left: '50%',
+    transform: 'translateX(-50%)',
     display: 'flex',
     gap: 2,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
+    pointerEvents: 'none' as const,
   },
   cellMore: {
-    fontSize: 9,
+    fontSize: 10,
     color: COLORS.textMuted,
-    fontWeight: 600,
+    fontWeight: 700,
+    lineHeight: 1,
   },
   row: {
     display: 'flex',
