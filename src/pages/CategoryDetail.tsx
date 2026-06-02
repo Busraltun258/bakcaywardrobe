@@ -17,6 +17,8 @@ import {
 import {
   DndContext,
   DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
   MouseSensor,
   TouchSensor,
   closestCenter,
@@ -72,14 +74,17 @@ const CategoryDetail: React.FC = () => {
   const [editLabel, setEditLabel] = useState('')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
   const [customOrder, setCustomOrder] = useState<string[]>([])
+  
+  // O anda sürüklenen resmi havada uçurmak için ID takibi
+  const [activeId, setActiveId] = useState<string | null>(null)
 
-  // Mobil için optimize edilmiş dnd-kit sensörleri
+  // Dokunmatik ve Masaüstü için optimize hassas sensörler
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      // delay: 150ms -> Sayfa kaydırma ile çakışmaz ama hızlıca basılı tutunca hemen tepki verir
+      // 150ms basılı tutunca sürükleme canlanır, normal kaydırmayı engellemez
       activationConstraint: { delay: 150, tolerance: 8 },
     }),
   )
@@ -153,6 +158,12 @@ const CategoryDetail: React.FC = () => {
     [items, customOrder],
   )
 
+  // Havada uçan aktif kıyafeti bulalım
+  const activeItem = useMemo(
+    () => items.find((item) => item.id === activeId),
+    [items, activeId],
+  )
+
   const handleUpload = async (files: FileList) => {
     if (!categoryKey || !user) return
     setUploading(true)
@@ -214,8 +225,14 @@ const CategoryDetail: React.FC = () => {
     setEditingId(null)
   }
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id))
+  }
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+    setActiveId(null) // Uçuş bitti, sıfırla
+    
     if (!over || active.id === over.id) return
     const ids = orderedItems.map((i) => i.id)
     const fromIdx = ids.indexOf(String(active.id))
@@ -229,7 +246,6 @@ const CategoryDetail: React.FC = () => {
       } catch {}
     }
     
-    // Firestore'a kalıcı kaydet - Yönetici (Admin) ve Kullanıcı aynı sırayı görsün
     if (user && categoryKey) {
       saveWardrobeOrder(user.uid, categoryKey, newIds)
     }
@@ -267,7 +283,7 @@ const CategoryDetail: React.FC = () => {
           <div style={{ flex: 1 }}>
             <h1 style={styles.heroTitle}>{category.label}</h1>
             <p style={styles.heroSub}>
-              {items.length} parça · {items.length > 1 ? 'Üzerine basılı tutarak yerini değiştir' : 'Kıyafet eklemek için aşağıdaki butona dokun'}
+              {items.length} parça · {items.length > 1 ? 'Parmağını basılı tutup ekranda özgürce gezdir' : 'Kıyafet eklemek için aşağıdaki butona dokun'}
             </p>
           </div>
 
@@ -318,7 +334,9 @@ const CategoryDetail: React.FC = () => {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
           >
             <SortableContext
               items={orderedItems.map((i) => i.id)}
@@ -342,6 +360,33 @@ const CategoryDetail: React.FC = () => {
                 ))}
               </div>
             </SortableContext>
+
+            {/* DRAG OVERLAY: Parmağın altında özgürce uçan katman */}
+            <DragOverlay adjustScale={true} style={{ zIndex: 9999 }}>
+              {activeItem ? (
+                <div
+                  style={{
+                    ...styles.card,
+                    transform: 'none',
+                    boxShadow: '0 20px 45px rgba(0,0,0,0.5)',
+                    scale: '1.08',
+                    opacity: 0.95,
+                    cursor: 'grabbing',
+                  }}
+                >
+                  <SmartImage
+                    cacheKey={activeItem.id}
+                    src={clothingItemImageSrc(activeItem)}
+                    style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+                  />
+                  {activeItem.label && (
+                    <div style={styles.cardOverlay}>
+                      <div style={styles.labelText}>{activeItem.label}</div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )}
       </div>
@@ -426,11 +471,11 @@ const SortableCell: React.FC<{
     ...styles.card,
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.6 : 1,
-    zIndex: isDragging ? 999 : 1,
-    boxShadow: isDragging ? '0 15px 35px rgba(0,0,0,0.4)' : undefined,
-    scale: isDragging ? '1.05' : '1',
-    touchAction: isDragging ? 'none' : 'auto', 
+    // Sürüklenen orijinal yerdeki kart arkada hafif soluk bir 'gölge/iz' olarak kalır
+    opacity: isDragging ? 0.25 : 1,
+    zIndex: isDragging ? 0 : 1,
+    // Sadece sürükleme anında scroll'u durdur, normal dururken sayfa kaydırılabilsin
+    touchAction: isDragging ? 'none' : 'auto',
   }
 
   return (
@@ -441,11 +486,6 @@ const SortableCell: React.FC<{
       {...attributes}
       {...listeners}
     >
-      {/* Dokunmatik cihazlarda resmin seçilmesini engellemek için:
-        1. draggable={false}
-        2. pointerEvents: 'none' (SmartImage içine)
-        3. userSelect: 'none' 
-      */}
       <div 
         draggable={false} 
         onClick={onOpen} 
@@ -466,7 +506,7 @@ const SortableCell: React.FC<{
           size="small"
           icon={<DeleteOutlined />}
           onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()} // Dokunmatikte yanlışlıkla tıklamayı/sürüklemeyi önler
+          onTouchStart={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -478,7 +518,7 @@ const SortableCell: React.FC<{
       <div 
         style={styles.cardOverlay} 
         onPointerDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()} // Overlaya dokunulduğunda sürüklemeyi iptal eder
+        onTouchStart={(e) => e.stopPropagation()}
       >
         {isEditing ? (
           <div style={{ display: 'flex', gap: 4, width: '100%' }}>
@@ -576,6 +616,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: COLORS.bgCard,
     aspectRatio: '1',
     userSelect: 'none' as const,
+    willChange: 'transform',
   },
   cardOverlay: {
     position: 'absolute' as const,
