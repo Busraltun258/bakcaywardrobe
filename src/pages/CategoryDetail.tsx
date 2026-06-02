@@ -266,41 +266,41 @@ const CategoryDetail: React.FC = () => {
         </div>
 
         <div style={styles.hero}>
-          <div style={styles.heroIcon}>
-            <span style={{ fontSize: 30 }}>{category.emoji}</span>
-          </div>
-          <div style={{ flex: 1 }}>
-            <h1 style={styles.heroTitle}>{category.label}</h1>
-            <p style={styles.heroSub}>
-              {items.length} parça · {items.length > 1 ? 'sürükleyerek sırala' : 'kıyafet eklemek için aşağıdaki butona dokun'}
-            </p>
-          </div>
-        </div>
+    <div style={styles.heroIcon}>
+      <span style={{ fontSize: 30 }}>{category.emoji}</span>
+    </div>
+    <div style={{ flex: 1 }}>
+      <h1 style={styles.heroTitle}>{category.label}</h1>
+      <p style={styles.heroSub}>
+        {items.length} parça · {items.length > 1 ? 'sürükleyerek sırala' : 'kıyafet eklemek için aşağıdaki butona dokun'}
+      </p>
+    </div>
 
-        {/* Upload area */}
-        <Upload
-          multiple
-          accept="image/*"
-          showUploadList={false}
-          beforeUpload={(_file, fileList) => {
-            const dt = new DataTransfer()
-            fileList.forEach((f) => dt.items.add(f))
-            handleUpload(dt.files)
-            return false
-          }}
-          disabled={uploading}
+    <div style={styles.heroActions}>
+      <Upload
+        multiple
+        accept="image/*"
+        showUploadList={false}
+        beforeUpload={(_file, fileList) => {
+          const dt = new DataTransfer()
+          fileList.forEach((f) => dt.items.add(f))
+          handleUpload(dt.files)
+          return false
+        }}
+        disabled={uploading}
+      >
+        <Button
+          type="primary"
+          size="middle"
+          icon={<PlusOutlined />}
+          loading={uploading}
+          style={{ height: 40, padding: '0 14px', borderRadius: 12, minWidth: 20 }}
         >
-          <Button
-            type="primary"
-            block
-            size="large"
-            icon={<PlusOutlined />}
-            loading={uploading}
-            style={{ marginBottom: 20, height: 50 }}
-          >
-            {uploading ? `Yükleniyor ${uploadProgress}%` : 'Kıyafet Ekle'}
-          </Button>
-        </Upload>
+          {uploading ? `Yükleniyor ${uploadProgress}%` : 'Ekle'}
+        </Button>
+      </Upload>
+    </div>
+  </div>
 
         {/* Content */}
         {loading ? (
@@ -521,6 +521,13 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 14,
     marginBottom: 18,
+  },
+  heroActions: {
+    marginLeft: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexShrink: 0,
   },
   heroIcon: {
     width: 60,
