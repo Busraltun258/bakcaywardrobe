@@ -63,9 +63,21 @@ const Stats: React.FC = () => {
   const stats = useMemo(() => {
     const total = suggestions.length
     const liked = suggestions.filter((s) => s.liked === 'yes').length
+    const favorites = suggestions.filter((s) => s.rating === 5).length
     const disliked = suggestions.filter((s) => s.liked === 'no').length
     const waiting = total - liked - disliked
-    const likeRate = total > 0 ? Math.round((liked / total) * 100) : 0
+
+    // Ortalama yıldız puanı: yıldız verilmiş önerilerin aritmetik ortalaması
+    const rated = suggestions.filter(
+      (s) => typeof s.rating === 'number' && s.rating > 0,
+    )
+    const avgRating =
+      rated.length > 0
+        ? rated.reduce((sum, s) => sum + (s.rating ?? 0), 0) / rated.length
+        : 0
+    // Progress bar için 0-100 ölçeği
+    const ratingPercent = avgRating > 0 ? Math.round((avgRating / 5) * 100) : 0
+    const ratedCount = rated.length
 
     // Parça bazlı kullanım sayıları
     const usage = new Map<string, number>()
@@ -86,11 +98,11 @@ const Stats: React.FC = () => {
       })
 
     const usedIds = new Set(usage.keys())
-    // Hiç önerilmemiş: dolapta en az 7 gündür olan + hiç öneride görmemiş
-    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
+    // Unutulmuş: dolapta en az 30 gündür olan + hiç öneride görmemiş
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const allUnused = clothes.filter(
-      (c) => !usedIds.has(c.id) && (c.createdAt ?? now) <= now - SEVEN_DAYS,
+      (c) => !usedIds.has(c.id) && (c.createdAt ?? now) <= now - THIRTY_DAYS,
     )
     // En uzun süredir bekleyen başta
     const unusedSorted = [...allUnused].sort(
@@ -111,9 +123,12 @@ const Stats: React.FC = () => {
     return {
       total,
       liked,
+      favorites,
       disliked,
       waiting,
-      likeRate,
+      avgRating,
+      ratingPercent,
+      ratedCount,
       mostLoved,
       unused: unusedSorted,
       unusedByCategory,
@@ -174,8 +189,8 @@ const Stats: React.FC = () => {
           <Col xs={12} sm={6}>
             <StatCard
               icon={<HeartFilled />}
-              value={stats.liked}
-              title="Beğendin"
+              value={stats.favorites}
+              title="Favoriler (5⭐)"
               color={COLORS.success}
             />
           </Col>
@@ -189,24 +204,27 @@ const Stats: React.FC = () => {
           </Col>
         </Row>
 
-        {/* Beğenme oranı */}
-        {stats.total > 0 && (
+        {/* Ortalama puan — yıldız verilen önerilerin ortalaması */}
+        {stats.ratedCount > 0 && (
           <Card style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <strong style={{ color: COLORS.text }}>
                 <HeartFilled style={{ color: COLORS.error, marginRight: 6 }} />
-                Beğenme oranı
+                Ortalama puan
               </strong>
-              <span style={{ color: COLORS.textSecondary, fontWeight: 600 }}>%{stats.likeRate}</span>
+              <span style={{ color: COLORS.textSecondary, fontWeight: 600 }}>
+                {stats.avgRating.toFixed(1)} / 5 ⭐
+              </span>
             </div>
             <Progress
-              percent={stats.likeRate}
+              percent={stats.ratingPercent}
               showInfo={false}
               strokeColor={{ from: COLORS.primary, to: COLORS.accent }}
               trailColor="rgba(255,255,255,0.06)"
             />
             <p style={{ margin: '8px 0 0', fontSize: 12, color: COLORS.textMuted }}>
-              {stats.waiting > 0 && `${stats.waiting} öneri henüz değerlendirilmedi`}
+              {stats.ratedCount} öneri puanlandı
+              {stats.waiting > 0 && ` · ${stats.waiting} öneri henüz değerlendirilmedi`}
             </p>
           </Card>
         )}
@@ -293,13 +311,13 @@ const Stats: React.FC = () => {
             title={
               <span style={{ fontSize: 15, fontWeight: 600 }}>
                 <WarningOutlined style={{ color: COLORS.warning, marginRight: 8 }} />
-                Unutulmuş Parçalar ({stats.unused.length})
+                1 Aydır Kullanılmayan ({stats.unused.length})
               </span>
             }
             style={{ marginBottom: 16 }}
           >
             <p style={{ fontSize: 12, color: COLORS.textMuted, margin: '0 0 10px' }}>
-              7 günden uzun süredir dolabında olup hiçbir öneride yer almamış parçalar.
+              1 aydır dolabında olup hiçbir öneride yer almamış parçalar.
               En uzun bekleyen başta.
             </p>
 
@@ -317,6 +335,8 @@ const Stats: React.FC = () => {
                 const days = Math.floor(
                   (Date.now() - (c.createdAt ?? Date.now())) / (24 * 60 * 60 * 1000),
                 )
+                const months = Math.floor(days / 30)
+                const ageLabel = months >= 1 ? `${months} ay` : `${days}g`
                 return (
                   <button
                     key={c.id}
@@ -333,7 +353,7 @@ const Stats: React.FC = () => {
                       style={{ width: '100%', height: '100%' }}
                     />
                     <Tag color="warning" style={styles.daysTag}>
-                      {days}g
+                      {ageLabel}
                     </Tag>
                     {(c.label || c.description) && (
                       <span style={styles.unusedLabel}>{c.label || c.description}</span>

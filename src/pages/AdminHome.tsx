@@ -154,9 +154,10 @@ const AdminHome: React.FC = () => {
   const stats = useMemo(() => {
     const total = suggestions.length
     const liked = suggestions.filter((s) => s.liked === 'yes').length
+    const favorites = suggestions.filter((s) => s.rating === 5).length
     const disliked = suggestions.filter((s) => s.liked === 'no').length
     const waiting = suggestions.filter((s) => s.liked === null || s.liked === undefined).length
-    return { total, liked, disliked, waiting }
+    return { total, liked, favorites, disliked, waiting }
   }, [suggestions])
 
   return (
@@ -183,8 +184,8 @@ const AdminHome: React.FC = () => {
           </Col>
           <Col xs={12} sm={6}>
             <StatCard
-              title="Beğenildi"
-              value={stats.liked}
+              title="Favoriler (5⭐)"
+              value={stats.favorites}
               icon={<HeartFilled />}
               color={COLORS.success}
             />
