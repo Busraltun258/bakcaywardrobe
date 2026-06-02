@@ -73,24 +73,20 @@ const CategoryDetail: React.FC = () => {
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
   const [customOrder, setCustomOrder] = useState<string[]>([])
 
-  // dnd-kit sensörleri:
-  //  - Mouse (masaüstü): 8px hareket → drag başlar
-  //  - Touch (mobil/tablet): 500ms basılı tut → drag başlar
-  // Scroll ile çakışmaz çünkü touch için NET uzun basış gerekiyor.
-  // PointerSensor yerine MouseSensor: touch'ta hiç fire etmez, sadece TouchSensor çalışır.
+  // Mobil için optimize edilmiş dnd-kit sensörleri
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 500, tolerance: 5 },
+      // delay: 150ms -> Sayfa kaydırma ile çakışmaz ama hızlıca basılı tutunca hemen tepki verir
+      activationConstraint: { delay: 150, tolerance: 8 },
     }),
   )
 
   const cacheKey = user && categoryKey ? `bk_clothes_${user.uid}_${categoryKey}` : null
   const orderKey = user && categoryKey ? `bk_order_${user.uid}_${categoryKey}` : null
 
-  // localStorage'dan ilk sırayı oku (offline / Firestore yüklenmeden flash önler)
   useEffect(() => {
     if (!orderKey) return
     try {
@@ -99,7 +95,6 @@ const CategoryDetail: React.FC = () => {
     } catch {}
   }, [orderKey])
 
-  // Firestore'dan sıralama dinleyici (canlı senkron — başka cihazda değişse hemen yansır)
   useEffect(() => {
     if (!user || !categoryKey) return
     return subscribeWardrobeOrders(user.uid, (orders) => {
@@ -128,7 +123,6 @@ const CategoryDetail: React.FC = () => {
       } catch {}
     }
 
-    // Doğrudan ownerId + category compound query → daha az read
     const q = query(
       collection(db, 'clothes'),
       where('ownerId', '==', user.uid),
@@ -234,7 +228,8 @@ const CategoryDetail: React.FC = () => {
         localStorage.setItem(orderKey, JSON.stringify(newIds))
       } catch {}
     }
-    // Firestore'a kalıcı kaydet — admin de aynı sırayı görsün
+    
+    // Firestore'a kalıcı kaydet - Yönetici (Admin) ve Kullanıcı aynı sırayı görsün
     if (user && categoryKey) {
       saveWardrobeOrder(user.uid, categoryKey, newIds)
     }
@@ -266,41 +261,41 @@ const CategoryDetail: React.FC = () => {
         </div>
 
         <div style={styles.hero}>
-    <div style={styles.heroIcon}>
-      <span style={{ fontSize: 30 }}>{category.emoji}</span>
-    </div>
-    <div style={{ flex: 1 }}>
-      <h1 style={styles.heroTitle}>{category.label}</h1>
-      <p style={styles.heroSub}>
-        {items.length} parça · {items.length > 1 ? 'sürükleyerek sırala' : 'kıyafet eklemek için aşağıdaki butona dokun'}
-      </p>
-    </div>
+          <div style={styles.heroIcon}>
+            <span style={{ fontSize: 30 }}>{category.emoji}</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <h1 style={styles.heroTitle}>{category.label}</h1>
+            <p style={styles.heroSub}>
+              {items.length} parça · {items.length > 1 ? 'Üzerine basılı tutarak yerini değiştir' : 'Kıyafet eklemek için aşağıdaki butona dokun'}
+            </p>
+          </div>
 
-    <div style={styles.heroActions}>
-      <Upload
-        multiple
-        accept="image/*"
-        showUploadList={false}
-        beforeUpload={(_file, fileList) => {
-          const dt = new DataTransfer()
-          fileList.forEach((f) => dt.items.add(f))
-          handleUpload(dt.files)
-          return false
-        }}
-        disabled={uploading}
-      >
-        <Button
-          type="primary"
-          size="middle"
-          icon={<PlusOutlined />}
-          loading={uploading}
-          style={{ height: 40, padding: '0 14px', borderRadius: 12, minWidth: 20 }}
-        >
-          {uploading ? `Yükleniyor ${uploadProgress}%` : 'Ekle'}
-        </Button>
-      </Upload>
-    </div>
-  </div>
+          <div style={styles.heroActions}>
+            <Upload
+              multiple
+              accept="image/*"
+              showUploadList={false}
+              beforeUpload={(_file, fileList) => {
+                const dt = new DataTransfer()
+                fileList.forEach((f) => dt.items.add(f))
+                handleUpload(dt.files)
+                return false
+              }}
+              disabled={uploading}
+            >
+              <Button
+                type="primary"
+                size="middle"
+                icon={<PlusOutlined />}
+                loading={uploading}
+                style={{ height: 40, padding: '0 14px', borderRadius: 12, minWidth: 20 }}
+              >
+                {uploading ? `Yükleniyor ${uploadProgress}%` : 'Ekle'}
+              </Button>
+            </Upload>
+          </div>
+        </div>
 
         {/* Content */}
         {loading ? (
@@ -395,10 +390,6 @@ const CategoryDetail: React.FC = () => {
   )
 }
 
-/**
- * Dokunmatik ve mouse ile sürüklenebilir tek kare.
- * useSortable: drag listener'larını ve transform'u sağlar.
- */
 const SortableCell: React.FC<{
   item: ClothingItem
   isOwner: boolean
@@ -435,11 +426,11 @@ const SortableCell: React.FC<{
     ...styles.card,
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : 1,
-    boxShadow: isDragging
-      ? '0 10px 30px rgba(124,140,255,0.5)'
-      : undefined,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 999 : 1,
+    boxShadow: isDragging ? '0 15px 35px rgba(0,0,0,0.4)' : undefined,
+    scale: isDragging ? '1.05' : '1',
+    touchAction: isDragging ? 'none' : 'auto', 
   }
 
   return (
@@ -450,12 +441,22 @@ const SortableCell: React.FC<{
       {...attributes}
       {...listeners}
     >
-      <SmartImage
-        cacheKey={item.id}
-        src={clothingItemImageSrc(item)}
-        style={{ width: '100%', height: '100%', cursor: 'pointer' }}
-        onClick={onOpen}
-      />
+      {/* Dokunmatik cihazlarda resmin seçilmesini engellemek için:
+        1. draggable={false}
+        2. pointerEvents: 'none' (SmartImage içine)
+        3. userSelect: 'none' 
+      */}
+      <div 
+        draggable={false} 
+        onClick={onOpen} 
+        style={{ width: '100%', height: '100%', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <SmartImage
+          cacheKey={item.id}
+          src={clothingItemImageSrc(item)}
+          style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        />
+      </div>
 
       {isOwner && !isEditing && (
         <Button
@@ -465,6 +466,7 @@ const SortableCell: React.FC<{
           size="small"
           icon={<DeleteOutlined />}
           onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()} // Dokunmatikte yanlışlıkla tıklamayı/sürüklemeyi önler
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
@@ -473,7 +475,11 @@ const SortableCell: React.FC<{
         />
       )}
 
-      <div style={styles.cardOverlay} onPointerDown={(e) => e.stopPropagation()}>
+      <div 
+        style={styles.cardOverlay} 
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()} // Overlaya dokunulduğunda sürüklemeyi iptal eder
+      >
         {isEditing ? (
           <div style={{ display: 'flex', gap: 4, width: '100%' }}>
             <Input
@@ -503,7 +509,14 @@ const SortableCell: React.FC<{
                 {item.label}
               </div>
             )}
-            <button type="button" onClick={onStartEdit} style={styles.labelBtn}>
+            <button 
+              type="button" 
+              onClick={(e) => {
+                e.stopPropagation()
+                onStartEdit()
+              }} 
+              style={styles.labelBtn}
+            >
               <EditOutlined style={{ marginRight: 6 }} />
               {item.label ? 'Düzenle' : 'Etiket ekle'}
             </button>
@@ -562,7 +575,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     background: COLORS.bgCard,
     aspectRatio: '1',
-    touchAction: 'none' as const,
+    userSelect: 'none' as const,
   },
   cardOverlay: {
     position: 'absolute' as const,
@@ -574,6 +587,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 4,
+    zIndex: 3,
   },
   labelText: {
     color: '#fff',
@@ -608,7 +622,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(0,0,0,0.6)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
-    zIndex: 2,
+    zIndex: 4,
   },
   empty: {
     display: 'flex',
