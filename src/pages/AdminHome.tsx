@@ -39,7 +39,6 @@ import {
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
-import LoveSphere from '../components/LoveSphere'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
@@ -171,9 +170,6 @@ const AdminHome: React.FC = () => {
           </h1>
           <p style={styles.heroSub}>Gelen istekleri yanıtla, önerilerini yönet</p>
         </div>
-
-        {/* Aşk Küresi — Buşra & Kamuran için günlük check-in */}
-        <LoveSphere />
 
         {/* Stats */}
         <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
@@ -455,6 +451,12 @@ const SuggestionsList: React.FC<{
               Bekliyor
             </Tag>
           )
+        const ratingTag =
+          s.rating && s.rating > 0 ? (
+            <span style={styles.ratingTag} title={`${s.rating} yıldız`}>
+              {'⭐'.repeat(s.rating)}
+            </span>
+          ) : null
         return (
           <Col xs={24} md={12} key={s.id} style={{ display: 'flex' }}>
             <Card
@@ -488,7 +490,10 @@ const SuggestionsList: React.FC<{
                     {dayjs(s.createdAt).format('DD MMM HH:mm')}
                   </div>
                 </div>
-                {likedTag}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  {ratingTag}
+                  {likedTag}
+                </div>
               </div>
 
               {r?.weather && (
@@ -577,6 +582,11 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '-0.6px',
   },
   heroSub: { margin: '4px 0 16px', color: COLORS.textSecondary, fontSize: 14 },
+  ratingTag: {
+    fontSize: 13,
+    letterSpacing: 1,
+    lineHeight: 1,
+  },
   metaPill: {
     display: 'inline-block' as const,
     fontSize: 11,

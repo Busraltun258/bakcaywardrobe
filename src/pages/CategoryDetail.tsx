@@ -17,7 +17,7 @@ import {
 import {
   DndContext,
   DragEndEvent,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   closestCenter,
   useSensor,
@@ -73,14 +73,17 @@ const CategoryDetail: React.FC = () => {
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
   const [customOrder, setCustomOrder] = useState<string[]>([])
 
-  // dnd-kit sensörleri: mouse 5px hareket veya touch 200ms basılı tutma → drag başlar.
-  // Bu sayede tek tıklama (lightbox açmak) ile sürükleme çakışmaz.
+  // dnd-kit sensörleri:
+  //  - Mouse (masaüstü): 8px hareket → drag başlar
+  //  - Touch (mobil/tablet): 500ms basılı tut → drag başlar
+  // Scroll ile çakışmaz çünkü touch için NET uzun basış gerekiyor.
+  // PointerSensor yerine MouseSensor: touch'ta hiç fire etmez, sadece TouchSensor çalışır.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
+      activationConstraint: { delay: 500, tolerance: 5 },
     }),
   )
 

@@ -146,24 +146,6 @@ body {
   min-height: 36px;
 }
 
-/* Aşk Durağı kartı — mobilde daha kompakt */
-@media (max-width: 720px) {
-  .bk-love-card .bk-love-sphere {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 22px !important;
-  }
-  .bk-love-card .bk-love-icon {
-    font-size: 22px;
-  }
-  .bk-love-card .bk-love-extra {
-    display: none !important;
-  }
-  .bk-love-card .bk-love-stats {
-    margin-top: 4px;
-  }
-}
-
 /* Banner tıklanınca değerlendirilmemiş öneri 2.5sn parlasın */
 .bk-pulse-highlight {
   animation: bk-pulse-glow 2.5s ease-out;

@@ -9,7 +9,6 @@ import {
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
-import LoveSphere from '../components/LoveSphere'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
@@ -114,9 +113,6 @@ const Wardrobe: React.FC = () => {
             <span style={styles.heroStatSuffix}>parça</span>
           </div>
         </section>
-
-        {/* Aşk Küresi — Buşra & Kamuran için günlük check-in */}
-        <LoveSphere />
 
         {/* Categories grid */}
         <div style={styles.grid}>
