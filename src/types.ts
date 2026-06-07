@@ -9,7 +9,18 @@ export interface ClothingItem {
   userId?: string
   label?: string
   description?: string
+  /** Sezon etiketi: 'summer', 'winter', 'transitional' (geçiş — ilkbahar/sonbahar), 'all' (tüm sezon). */
+  season?: Season
 }
+
+export type Season = 'summer' | 'winter' | 'transitional' | 'all'
+
+export const SEASONS: { key: Season; label: string; emoji: string }[] = [
+  { key: 'all', label: 'Tüm sezon', emoji: '🌍' },
+  { key: 'summer', label: 'Yazlık', emoji: '☀️' },
+  { key: 'transitional', label: 'Mevsimlik', emoji: '🍂' },
+  { key: 'winter', label: 'Kışlık', emoji: '❄️' },
+]
 
 export type OutfitRequestStatus = 'pending' | 'answered' | 'closed'
 export type RequestType = 'single' | 'weekly'

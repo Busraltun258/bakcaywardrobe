@@ -24,8 +24,9 @@ import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { CATEGORIES, ClothingItem, OutfitSuggestion } from '../types'
+import { CATEGORIES, ClothingItem, OutfitSuggestion, SEASONS } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { getCurrentRealSeason, isOutOfSeason } from '../utils/seasonFilter'
 
 /**
  * Kullanıcı istatistikleri:
@@ -98,11 +99,16 @@ const Stats: React.FC = () => {
       })
 
     const usedIds = new Set(usage.keys())
-    // Unutulmuş: dolapta en az 30 gündür olan + hiç öneride görmemiş
+    // Unutulmuş: dolapta en az 30 gündür olan + hiç öneride görmemiş + ŞU AN SEZONUNDA OLAN.
+    // Yaz ayında kışlık parça flag'lenmez (zaten giyemez).
     const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
+    const currentSeason = getCurrentRealSeason()
     const allUnused = clothes.filter(
-      (c) => !usedIds.has(c.id) && (c.createdAt ?? now) <= now - THIRTY_DAYS,
+      (c) =>
+        !usedIds.has(c.id) &&
+        (c.createdAt ?? now) <= now - THIRTY_DAYS &&
+        !isOutOfSeason(c.season, currentSeason),
     )
     // En uzun süredir bekleyen başta
     const unusedSorted = [...allUnused].sort(
@@ -318,7 +324,12 @@ const Stats: React.FC = () => {
           >
             <p style={{ fontSize: 12, color: COLORS.textMuted, margin: '0 0 10px' }}>
               1 aydır dolabında olup hiçbir öneride yer almamış parçalar.
-              En uzun bekleyen başta.
+              Şu an{' '}
+              <strong style={{ color: COLORS.text }}>
+                {SEASONS.find((s) => s.key === getCurrentRealSeason())?.emoji}{' '}
+                {SEASONS.find((s) => s.key === getCurrentRealSeason())?.label}
+              </strong>{' '}
+              olduğu için sezon dışı parçalar (örn. yazın kışlıklar) listelenmez.
             </p>
 
             {/* Kategori dağılımı */}

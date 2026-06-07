@@ -119,9 +119,10 @@ const OutfitDiary: React.FC = () => {
     )
   }, [user])
 
-  // Her öneri için tarih hesapla → planlanmış kombin listesi
+  // Her öneri için tarih hesapla → planlanmış kombin listesi.
+  // isPast: tarih dünden eskiyse VEYA bugünse ve saat 18:00'i geçmişse "giyildi" sayılır.
   const planned: PlannedOutfit[] = useMemo(() => {
-    const today = dayjs().startOf('day')
+    const now = dayjs()
     const list: PlannedOutfit[] = []
     suggestions.forEach((s) => {
       const r = requests[s.requestId]
@@ -133,9 +134,11 @@ const OutfitDiary: React.FC = () => {
         date = r.requestDate
       }
       if (!date) return
+      // 18:00 cut-off — o günün saat 6'sından sonra "giyildi"ye düşer
+      const cutoff = dayjs(date).hour(18).minute(0).second(0)
       list.push({
         date,
-        isPast: dayjs(date).isBefore(today),
+        isPast: now.isAfter(cutoff),
         suggestion: s,
         request: r,
       })

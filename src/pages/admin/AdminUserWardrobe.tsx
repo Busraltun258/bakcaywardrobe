@@ -20,7 +20,7 @@ import Lightbox from '../../components/Lightbox'
 import SmartImage from '../../components/SmartImage'
 import { db } from '../../firebase'
 import { COLORS } from '../../theme'
-import { CATEGORIES, ClothingItem, UserProfile } from '../../types'
+import { CATEGORIES, ClothingItem, SEASONS, UserProfile } from '../../types'
 import { clothingItemImageSrc } from '../../utils/imageUtils'
 import { warmImageCache } from '../../utils/imageCache'
 import { sortByCustomOrder, subscribeWardrobeOrders, WardrobeOrders } from '../../utils/wardrobeOrder'
@@ -170,6 +170,12 @@ const AdminUserWardrobe: React.FC = () => {
                   src={clothingItemImageSrc(item)}
                   style={{ width: '100%', height: '100%' }}
                 />
+                {/* Sezon rozeti (read-only) */}
+                {item.season && item.season !== 'all' && (
+                  <span style={styles.seasonBadge}>
+                    {SEASONS.find((s) => s.key === item.season)?.emoji}
+                  </span>
+                )}
                 {(item.label || item.description) && (
                   <span style={styles.labelTag}>{item.label || item.description}</span>
                 )}
@@ -222,6 +228,23 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     cursor: 'pointer',
     background: COLORS.bgCard,
+  },
+  seasonBadge: {
+    position: 'absolute' as const,
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: '22px',
+    textAlign: 'center' as const,
+    zIndex: 2,
+    pointerEvents: 'none' as const,
   },
   labelTag: {
     position: 'absolute' as const,

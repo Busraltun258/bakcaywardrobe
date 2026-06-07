@@ -1,100 +1,91 @@
 import { RightOutlined } from '@ant-design/icons'
+import { Tag } from 'antd'
 import {
   collection,
-  getCountFromServer,
   onSnapshot,
   query,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { CATEGORIES } from '../types'
+import { CATEGORIES, SEASONS, Season } from '../types'
+import {
+  getStoredSeasonFilter,
+  matchesSeasonFilter,
+  setStoredSeasonFilter,
+} from '../utils/seasonFilter'
+
+interface ItemMeta {
+  category: string
+  season?: Season
+}
 
 const Wardrobe: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [counts, setCounts] = useState<Record<string, number>>({})
-  const [totalCount, setTotalCount] = useState<number | null>(null)
+  // Hafif meta listesi: sadece category + season; base64 görsel taşımıyoruz.
+  const [items, setItems] = useState<ItemMeta[]>([])
+  const [seasonFilter, setSeasonFilter] = useState<Set<Season>>(() =>
+    getStoredSeasonFilter(),
+  )
 
-  /**
-   * Performans optimizasyonu: tüm kıyafetleri çekmek yerine
-   *  - Her kategorinin sayısını count() ile al (1 read = 1 cost, görsel datası yok)
-   *  - Sonuçları localStorage'a 5 dakika cache'le
-   * Bu sayede sayfa açılış süresi 10s+ → <1s seviyesine düşer.
-   */
+  // localStorage cache (hızlı boot için)
   useEffect(() => {
     if (!user) return
-    const cacheKey = `bk_cat_counts_${user.uid}`
-    const TTL = 5 * 60 * 1000
-
     try {
-      const cached = localStorage.getItem(cacheKey)
-      if (cached) {
-        const { data, ts } = JSON.parse(cached)
-        if (Date.now() - ts < TTL) {
-          setCounts(data)
-          setTotalCount(Object.values(data as Record<string, number>).reduce((a, b) => a + b, 0))
-        }
-      }
+      const cached = localStorage.getItem(`bk_wardrobe_meta_${user.uid}`)
+      if (cached) setItems(JSON.parse(cached))
     } catch {}
-
-    let cancelled = false
-    ;(async () => {
-      const next: Record<string, number> = {}
-      await Promise.all(
-        CATEGORIES.map(async (cat) => {
-          try {
-            const q = query(
-              collection(db, 'clothes'),
-              where('ownerId', '==', user.uid),
-              where('category', '==', cat.key),
-            )
-            const snap = await getCountFromServer(q)
-            next[cat.key] = snap.data().count
-          } catch {
-            next[cat.key] = 0
-          }
-        }),
-      )
-      if (cancelled) return
-      setCounts(next)
-      const total = Object.values(next).reduce((a, b) => a + b, 0)
-      setTotalCount(total)
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify({ data: next, ts: Date.now() }))
-      } catch {}
-    })()
-
-    return () => {
-      cancelled = true
-    }
   }, [user])
 
-  // Real-time tek bir hafif listener (sadece sayım için, görsel datası yok)
+  // Canlı listener — sadece category + season alanlarını sakla
   useEffect(() => {
     if (!user) return
     const q = query(collection(db, 'clothes'), where('ownerId', '==', user.uid))
-    const unsub = onSnapshot(q, (snap) => {
-      const next: Record<string, number> = {}
-      snap.docs.forEach((d) => {
-        const c = d.get('category') as string | undefined
-        if (c) next[c] = (next[c] ?? 0) + 1
-      })
-      setCounts(next)
-      setTotalCount(snap.size)
+    return onSnapshot(q, (snap) => {
+      const list: ItemMeta[] = snap.docs.map((d) => ({
+        category: (d.get('category') as string) ?? '',
+        season: d.get('season') as Season | undefined,
+      }))
+      setItems(list)
       try {
-        localStorage.setItem(
-          `bk_cat_counts_${user.uid}`,
-          JSON.stringify({ data: next, ts: Date.now() }),
-        )
+        localStorage.setItem(`bk_wardrobe_meta_${user.uid}`, JSON.stringify(list))
       } catch {}
     })
-    return () => unsub()
   }, [user])
+
+  // Filtreyi her değişiklikte localStorage'a yaz — login/logout'ta korunur
+  useEffect(() => {
+    setStoredSeasonFilter(seasonFilter)
+  }, [seasonFilter])
+
+  // Filtreli sayımlar
+  const counts = useMemo(() => {
+    const out: Record<string, number> = {}
+    items.forEach((it) => {
+      if (!matchesSeasonFilter(it.season, seasonFilter)) return
+      out[it.category] = (out[it.category] ?? 0) + 1
+    })
+    return out
+  }, [items, seasonFilter])
+
+  const totalCount = useMemo(
+    () => Object.values(counts).reduce((a, b) => a + b, 0),
+    [counts],
+  )
+
+  const toggleSeason = (s: Season) => {
+    setSeasonFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
 
 
   return (
@@ -109,10 +100,34 @@ const Wardrobe: React.FC = () => {
             </p>
           </div>
           <div style={styles.heroStat}>
-            <span style={styles.statValue}>{totalCount ?? 0}</span>
+            <span style={styles.statValue}>{totalCount}</span>
             <span style={styles.heroStatSuffix}>parça</span>
           </div>
         </section>
+
+        {/* Sezon filtresi — birden fazla seçilebilir, login/logout'ta korunur */}
+        <div style={styles.seasonRow}>
+          <span style={styles.seasonLabel}>Sezon:</span>
+          {SEASONS.map((s) => (
+            <Tag.CheckableTag
+              key={s.key}
+              checked={seasonFilter.has(s.key)}
+              onChange={() => toggleSeason(s.key)}
+              style={styles.seasonTag}
+            >
+              {s.emoji} {s.label}
+            </Tag.CheckableTag>
+          ))}
+          {seasonFilter.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSeasonFilter(new Set())}
+              style={styles.seasonClear}
+            >
+              Temizle
+            </button>
+          )}
+        </div>
 
         {/* Categories grid */}
         <div style={styles.grid}>
@@ -185,6 +200,33 @@ const styles: Record<string, React.CSSProperties> = {
     color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: 500,
+  },
+  seasonRow: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    alignItems: 'center',
+    padding: '0 0 14px',
+  },
+  seasonLabel: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginRight: 4,
+  },
+  seasonTag: {
+    fontSize: 12,
+    padding: '4px 10px',
+    borderRadius: 999,
+    cursor: 'pointer',
+  },
+  seasonClear: {
+    background: 'transparent',
+    border: 'none',
+    color: COLORS.textMuted,
+    fontSize: 11,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    padding: '4px 6px',
   },
   grid: {
     display: 'grid',

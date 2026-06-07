@@ -49,7 +49,12 @@ import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { CATEGORIES, ClothingItem } from '../types'
+import { CATEGORIES, ClothingItem, SEASONS, Season } from '../types'
+import {
+  getStoredSeasonFilter,
+  matchesSeasonFilter,
+  setStoredSeasonFilter,
+} from '../utils/seasonFilter'
 import { removeCachedImage } from '../utils/imageCache'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { summarizeBatchUpload, uploadClothesBatch } from '../utils/uploadClothesBatch'
@@ -153,10 +158,25 @@ const CategoryDetail: React.FC = () => {
     return () => unsubscribe()
   }, [categoryKey, user, cacheKey])
 
-  const orderedItems = useMemo(
-    () => sortByCustomOrder(items, customOrder),
-    [items, customOrder],
+  // Wardrobe sayfasında seçilen sezon filtresini al — localStorage'tan canlı oku
+  const [seasonFilter, setSeasonFilter] = useState<Set<Season>>(() =>
+    getStoredSeasonFilter(),
   )
+  // Diğer sekmeden değişirse senkron olsun
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'bk_wardrobe_season_filter') {
+        setSeasonFilter(getStoredSeasonFilter())
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  const orderedItems = useMemo(() => {
+    const sorted = sortByCustomOrder(items, customOrder)
+    return sorted.filter((c) => matchesSeasonFilter(c.season, seasonFilter))
+  }, [items, customOrder, seasonFilter])
 
   // Havada uçan aktif kıyafeti bulalım
   const activeItem = useMemo(
@@ -225,6 +245,21 @@ const CategoryDetail: React.FC = () => {
     setEditingId(null)
   }
 
+  // Sezonu döngüsel olarak değiştir: 🌍 → ☀️ → 🍂 → ❄️ → 🌍
+  const cycleSeason = async (item: ClothingItem) => {
+    const order: Season[] = ['all', 'summer', 'transitional', 'winter']
+    const currentIdx = order.indexOf(item.season ?? 'all')
+    const nextSeason = order[(currentIdx + 1) % order.length]
+    try {
+      await updateDoc(doc(db, 'clothes', item.id), { season: nextSeason })
+      const label = SEASONS.find((s) => s.key === nextSeason)?.label
+      message.success(`Sezon: ${label}`)
+    } catch (e) {
+      console.error(e)
+      message.error('Sezon değiştirilemedi')
+    }
+  }
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(String(event.active.id))
   }
@@ -283,8 +318,31 @@ const CategoryDetail: React.FC = () => {
           <div style={{ flex: 1 }}>
             <h1 style={styles.heroTitle}>{category.label}</h1>
             <p style={styles.heroSub}>
-              {items.length} parça · {items.length > 1 ? 'Parmağını basılı tutup ekranda özgürce gezdir' : 'Kıyafet eklemek için aşağıdaki butona dokun'}
+              {seasonFilter.size > 0
+                ? `${orderedItems.length} / ${items.length} parça · sezon filtresi aktif`
+                : `${items.length} parça · ${items.length > 1 ? 'Parmağını basılı tutup ekranda özgürce gezdir' : 'Kıyafet eklemek için aşağıdaki butona dokun'}`}
             </p>
+            {seasonFilter.size > 0 && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {Array.from(seasonFilter).map((s) => (
+                  <span key={s} style={styles.seasonChip}>
+                    {SEASONS.find((x) => x.key === s)?.emoji}{' '}
+                    {SEASONS.find((x) => x.key === s)?.label}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const empty = new Set<Season>()
+                    setSeasonFilter(empty)
+                    setStoredSeasonFilter(empty)
+                  }}
+                  style={styles.clearLink}
+                >
+                  temizle
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={styles.heroActions}>
@@ -356,6 +414,7 @@ const CategoryDetail: React.FC = () => {
                     onStartEdit={() => startEdit(item)}
                     onSaveLabel={() => saveLabel(item)}
                     onCancelEdit={() => setEditingId(null)}
+                    onCycleSeason={() => cycleSeason(item)}
                   />
                 ))}
               </div>
@@ -446,6 +505,7 @@ const SortableCell: React.FC<{
   onStartEdit: () => void
   onSaveLabel: () => void
   onCancelEdit: () => void
+  onCycleSeason: () => void
 }> = ({
   item,
   isOwner,
@@ -457,6 +517,7 @@ const SortableCell: React.FC<{
   onStartEdit,
   onSaveLabel,
   onCancelEdit,
+  onCycleSeason,
 }) => {
   const {
     attributes,
@@ -499,20 +560,36 @@ const SortableCell: React.FC<{
       </div>
 
       {isOwner && !isEditing && (
-        <Button
-          type="text"
-          danger
-          shape="circle"
-          size="small"
-          icon={<DeleteOutlined />}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          style={styles.deleteBtn}
-        />
+        <>
+          {/* Sezon tıkla-değiştir butonu (sol-üst) — döngü: 🌍→☀️→🍂→❄️ */}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onCycleSeason()
+            }}
+            style={styles.seasonBtn}
+            title="Sezon değiştir"
+          >
+            {SEASONS.find((s) => s.key === (item.season ?? 'all'))?.emoji}
+          </button>
+          <Button
+            type="text"
+            danger
+            shape="circle"
+            size="small"
+            icon={<DeleteOutlined />}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            style={styles.deleteBtn}
+          />
+        </>
       )}
 
       <div 
@@ -664,6 +741,43 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
     zIndex: 4,
+  },
+  seasonChip: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    background: 'rgba(124,140,255,0.10)',
+    border: `1px solid ${COLORS.border}`,
+    padding: '2px 7px',
+    borderRadius: 999,
+  },
+  clearLink: {
+    background: 'transparent',
+    border: 'none',
+    color: COLORS.textMuted,
+    fontSize: 11,
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    padding: '2px 4px',
+  },
+  seasonBtn: {
+    position: 'absolute' as const,
+    top: 6,
+    left: 6,
+    width: 26,
+    height: 26,
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 13,
+    lineHeight: 1,
+    cursor: 'pointer',
+    zIndex: 4,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: {
     display: 'flex',

@@ -849,11 +849,11 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           {profileName(request.toUid)[0]?.toUpperCase()}
         </Avatar>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.text }}>
-            {dayjs(request.createdAt).format('DD MMMM YYYY')}
+          <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
+            {profileName(request.toUid)}
           </div>
           <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-            {profileName(request.toUid)} · {dayjs(request.createdAt).format('HH:mm')}
+            {dayjs(request.createdAt).format('DD MMMM YYYY HH:mm')}
           </div>
         </div>
         {isWeekly && <Tag color="purple">5 gün</Tag>}
@@ -861,6 +861,27 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           {request.status === 'pending' ? 'Bekliyor' : 'Yanıtlandı'}
         </Tag>
       </div>
+
+      {/* İki tarih bir arada, etiketli */}
+      <div style={styles.dateBlock}>
+        <div style={styles.dateLine}>
+          <span style={styles.dateLabelTxt}>📤 Talep edildi:</span>
+          <span style={styles.dateValTxt}>
+            {dayjs(request.createdAt).format('DD MMM YYYY · HH:mm')}
+          </span>
+        </div>
+        {(request.requestDate || request.weekStartDate) && (
+          <div style={styles.dateLine}>
+            <span style={styles.dateLabelTxt}>👕 Giyilecek:</span>
+            <span style={{ ...styles.dateValTxt, color: COLORS.primary, fontWeight: 600 }}>
+              {isWeekly
+                ? `${dayjs(request.weekStartDate).format('DD MMM')} - ${dayjs(request.weekStartDate).add(4, 'day').format('DD MMM YYYY')}`
+                : dayjs(request.requestDate).format('DD MMMM YYYY, dddd')}
+            </span>
+          </div>
+        )}
+      </div>
+
       {request.weather && (
         <p style={styles.weatherPill}>
           {request.weather.icon} {request.weather.temp}°C · {request.weather.description}
@@ -882,14 +903,6 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           }}
         >
           "{request.note}"
-        </p>
-      )}
-      {(request.requestDate || request.weekStartDate) && (
-        <p style={{ fontSize: 12, color: COLORS.primary, margin: '0 0 10px' }}>
-          <CalendarOutlined style={{ marginRight: 6 }} />
-          {isWeekly
-            ? `${dayjs(request.weekStartDate).format('DD MMM')} - ${dayjs(request.weekStartDate).add(4, 'day').format('DD MMM YYYY')}`
-            : dayjs(request.requestDate).format('DD MMMM YYYY')}
         </p>
       )}
       {suggestions.length === 0 && request.status === 'pending' && (
@@ -1145,18 +1158,30 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
       </div>
 
       <Input.TextArea
-        placeholder="Yorum ekle…"
+        placeholder="Yorum ekle… (örn: gri yerine beyaz, mavi mont)"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         rows={2}
         style={{ marginTop: 10 }}
       />
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <Button onClick={() => saveFeedback(undefined, comment)} loading={savingFeedback}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <Button size="small" onClick={() => saveFeedback(undefined, comment)} loading={savingFeedback}>
           Yorumu Kaydet
         </Button>
+        <Button
+          size="small"
+          danger
+          icon={<CommentOutlined />}
+          onClick={() => {
+            setLiked('no')
+            saveFeedback('no', comment)
+            message.info('Değişiklik talebin stiliste iletildi 💌')
+          }}
+        >
+          Değişiklik İste
+        </Button>
         {isAdmin && (
-          <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={onDelete}>
             Sil
           </Button>
         )}
@@ -1291,6 +1316,32 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 14,
     cursor: 'pointer',
     background: `linear-gradient(135deg, ${COLORS.bgCard}, rgba(124,140,255,0.08))`,
+  },
+  dateBlock: {
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    padding: '6px 10px',
+    marginBottom: 8,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 3,
+  },
+  dateLine: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'baseline',
+    flexWrap: 'wrap' as const,
+    fontSize: 12,
+  },
+  dateLabelTxt: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    minWidth: 90,
+  },
+  dateValTxt: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
   },
   weatherPill: {
     display: 'inline-block',

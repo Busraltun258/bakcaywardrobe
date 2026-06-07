@@ -44,6 +44,7 @@ import {
   ClothingItem,
   OutfitRequest,
   OutfitSuggestion,
+  SEASONS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import {
@@ -360,6 +361,12 @@ const EditSuggestion: React.FC = () => {
                   src={clothingItemImageSrc(item)}
                   style={{ width: '100%', height: '100%' }}
                 />
+                {/* Sezon rozeti (read-only) */}
+                {item.season && item.season !== 'all' && (
+                  <span style={styles.seasonBadge}>
+                    {SEASONS.find((s) => s.key === item.season)?.emoji}
+                  </span>
+                )}
                 {item.label && <span style={styles.labelTag}>{item.label}</span>}
                 {isSelected && (
                   <div style={styles.check}>
@@ -544,6 +551,23 @@ const styles: Record<string, React.CSSProperties> = {
   cellOn: {
     borderColor: COLORS.primary,
     boxShadow: `0 0 0 4px rgba(124, 140, 255, 0.18)`,
+  },
+  seasonBadge: {
+    position: 'absolute' as const,
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: '22px',
+    textAlign: 'center' as const,
+    zIndex: 2,
+    pointerEvents: 'none' as const,
   },
   labelTag: {
     position: 'absolute' as const,

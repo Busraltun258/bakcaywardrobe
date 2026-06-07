@@ -46,6 +46,8 @@ import {
   OCCASIONS,
   OutfitDraft,
   OutfitRequest,
+  SEASONS,
+  Season,
   WEEKDAYS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
@@ -70,6 +72,7 @@ const RespondOutfit: React.FC = () => {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [catFilter, setCatFilter] = useState<string | 'all'>('all')
+  const [seasonFilter, setSeasonFilter] = useState<Season | 'any'>('any')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -160,7 +163,14 @@ const RespondOutfit: React.FC = () => {
   }, [wardrobe])
 
   const filtered = useMemo(() => {
-    const base = catFilter === 'all' ? wardrobe : wardrobe.filter((c) => c.category === catFilter)
+    // Önce sezon filtresi: 'any' tümünü gösterir; seçili sezon + 'all' (tüm-sezon) etiketli olanlar geçer
+    const bySeason =
+      seasonFilter === 'any'
+        ? wardrobe
+        : wardrobe.filter(
+            (c) => !c.season || c.season === seasonFilter || c.season === 'all',
+          )
+    const base = catFilter === 'all' ? bySeason : bySeason.filter((c) => c.category === catFilter)
     if (catFilter === 'all') {
       const result: ClothingItem[] = []
       CATEGORIES.forEach((c) => {
@@ -171,7 +181,7 @@ const RespondOutfit: React.FC = () => {
       return result
     }
     return sortByCustomOrder(base, orders[catFilter])
-  }, [wardrobe, catFilter, orders])
+  }, [wardrobe, catFilter, orders, seasonFilter])
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -414,6 +424,22 @@ const RespondOutfit: React.FC = () => {
           </Card>
         )}
 
+        {/* Sezon filtresi — hangi mevsim kıyafetleri görmek istiyorsun */}
+        <div style={{ marginBottom: 8, overflowX: 'auto' }}>
+          <Segmented
+            value={seasonFilter}
+            onChange={(v) => setSeasonFilter(v as Season | 'any')}
+            options={[
+              { label: '🗂️ Hepsi', value: 'any' },
+              ...SEASONS.map((s) => ({
+                label: `${s.emoji} ${s.label}`,
+                value: s.key,
+              })),
+            ]}
+            block
+          />
+        </div>
+
         <div style={{ marginBottom: 14, overflowX: 'auto' }}>
           <Segmented
             value={catFilter}
@@ -450,6 +476,12 @@ const RespondOutfit: React.FC = () => {
                     src={clothingItemImageSrc(item)}
                     style={{ width: '100%', height: '100%' }}
                   />
+                  {/* Sezon rozeti (read-only) — kullanıcının etiketlediği sezon */}
+                  {item.season && item.season !== 'all' && (
+                    <span style={styles.seasonBadge}>
+                      {SEASONS.find((s) => s.key === item.season)?.emoji}
+                    </span>
+                  )}
                   {(item.label || item.description) && (
                     <span style={styles.labelTag}>{item.label || item.description}</span>
                   )}
@@ -646,6 +678,23 @@ const styles: Record<string, React.CSSProperties> = {
   cellOn: {
     borderColor: COLORS.primary,
     boxShadow: `0 0 0 4px rgba(124, 140, 255, 0.18)`,
+  },
+  seasonBadge: {
+    position: 'absolute' as const,
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: '22px',
+    textAlign: 'center' as const,
+    zIndex: 2,
+    pointerEvents: 'none' as const,
   },
   labelTag: {
     position: 'absolute' as const,

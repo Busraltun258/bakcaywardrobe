@@ -505,12 +505,24 @@ const SuggestionsList: React.FC<{
                   )}
                 </div>
               )}
-              {r && (r.requestDate || r.weekStartDate) && (
-                <div style={styles.metaPill}>
-                  <CalendarOutlined style={{ marginRight: 4 }} />
-                  {r.requestType === 'weekly'
-                    ? `${dayjs(r.weekStartDate).format('DD MMM')} - ${dayjs(r.weekStartDate).add(4, 'day').format('DD MMM')}`
-                    : dayjs(r.requestDate).format('DD MMMM YYYY, dddd')}
+              {r && (
+                <div style={styles.dateBlock}>
+                  <div style={styles.dateLine}>
+                    <span style={styles.dateLabelTxt}>📤 Talep edildi:</span>
+                    <span style={styles.dateValTxt}>
+                      {dayjs(r.createdAt).format('DD MMM YYYY · HH:mm')}
+                    </span>
+                  </div>
+                  {(r.requestDate || r.weekStartDate) && (
+                    <div style={styles.dateLine}>
+                      <span style={styles.dateLabelTxt}>👕 Giyilecek:</span>
+                      <span style={{ ...styles.dateValTxt, color: COLORS.primary, fontWeight: 600 }}>
+                        {r.requestType === 'weekly'
+                          ? `${dayjs(r.weekStartDate).format('DD MMM')} - ${dayjs(r.weekStartDate).add(4, 'day').format('DD MMM')}`
+                          : dayjs(r.requestDate).format('DD MMMM YYYY, dddd')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
               {r?.note && (
@@ -587,6 +599,32 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     letterSpacing: 1,
     lineHeight: 1,
+  },
+  dateBlock: {
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    padding: '6px 10px',
+    margin: '0 0 8px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 3,
+  },
+  dateLine: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'baseline',
+    flexWrap: 'wrap' as const,
+    fontSize: 12,
+  },
+  dateLabelTxt: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    minWidth: 90,
+  },
+  dateValTxt: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
   },
   metaPill: {
     display: 'inline-block' as const,
