@@ -107,7 +107,6 @@ const Wardrobe: React.FC = () => {
 
         {/* Sezon filtresi — birden fazla seçilebilir, login/logout'ta korunur */}
         <div style={styles.seasonRow}>
-          <span style={styles.seasonLabel}>Sezon:</span>
           {SEASONS.map((s) => (
             <Tag.CheckableTag
               key={s.key}

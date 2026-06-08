@@ -253,7 +253,7 @@ const CategoryDetail: React.FC = () => {
     try {
       await updateDoc(doc(db, 'clothes', item.id), { season: nextSeason })
       const label = SEASONS.find((s) => s.key === nextSeason)?.label
-      message.success(`Sezon: ${label}`)
+      message.success(`${label}`)
     } catch (e) {
       console.error(e)
       message.error('Sezon değiştirilemedi')
