@@ -1,6 +1,29 @@
 import { Season } from '../types'
 
+/**
+ * Bir parçanın geçerli sezon dizisini döndürür.
+ * Yeni format: item.seasons (array)
+ * Eski format: item.season (tek string) → array'e çevrilir
+ * 'all'/'transitional' → boş array (etiketsiz = evrensel)
+ */
+export function getItemSeasons(item: {
+  seasons?: Season[]
+  season?: Season
+}): Season[] {
+  if (Array.isArray(item.seasons) && item.seasons.length > 0) {
+    return item.seasons.filter(
+      (s) => s === 'spring' || s === 'summer' || s === 'autumn' || s === 'winter',
+    )
+  }
+  if (item.season && item.season !== 'all' && item.season !== 'transitional') {
+    return [item.season]
+  }
+  return []
+}
+
 const STORAGE_KEY = 'bk_wardrobe_season_filter'
+
+const VALID_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter', 'all']
 
 /**
  * Kullanıcının seçtiği sezon filtresi — Dolabım/Kategori sayfalarında ortak.
@@ -12,7 +35,7 @@ export function getStoredSeasonFilter(): Set<Season> {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return new Set()
     const arr = JSON.parse(raw) as string[]
-    return new Set(arr.filter((s) => ['summer', 'winter', 'transitional', 'all'].includes(s)) as Season[])
+    return new Set(arr.filter((s) => VALID_SEASONS.includes(s as Season)) as Season[])
   } catch {
     return new Set()
   }
@@ -26,37 +49,62 @@ export function setStoredSeasonFilter(set: Set<Season>) {
 
 /**
  * Bir parça mevcut sezon filtresine uyuyor mu?
- * Filtre boşsa hepsi uyar.
+ *  - Filtre boşsa: hepsi uyar
+ *  - Etiketsiz parça: her zaman görünür (evrensel)
+ *  - Aksi: parçanın sezonlarından herhangi biri filtre setinde varsa uyar
  */
 export function matchesSeasonFilter(
-  itemSeason: Season | undefined,
+  itemSeasons: Season[] | undefined,
   filter: Set<Season>,
 ): boolean {
   if (filter.size === 0) return true
-  // 'all' (tüm sezon) etiketli parçalar herhangi bir filtreye uyar
-  if (itemSeason === 'all' || !itemSeason) return filter.has('all')
-  return filter.has(itemSeason)
+  if (!itemSeasons || itemSeasons.length === 0) return true
+  return itemSeasons.some((s) => filter.has(s))
 }
 
 /**
- * Bugünün ayına göre o anki gerçek dünyadaki sezon.
- * Aralık-Şubat = winter, Mart-Mayıs/Eylül-Kasım = transitional, Haziran-Ağustos = summer.
+ * Türkiye'de iklim geçişleri yumuşaktır; çoğu ay 1-3 sezona girer.
+ * Kullanıcının verdiği geçiş tablosu:
+ *   Ocak: Kış · Şubat: Kış · Mart: Kış+Sonbahar+İlkbahar
+ *   Nisan: İlkbahar+Sonbahar · Mayıs: İlkbahar+Yaz
+ *   Haziran: Yaz+İlkbahar · Temmuz: Yaz · Ağustos: Yaz
+ *   Eylül: Sonbahar+Yaz · Ekim: Sonbahar+İlkbahar
+ *   Kasım: Sonbahar+Kış · Aralık: Kış+Sonbahar
  */
-export function getCurrentRealSeason(): Season {
-  const month = new Date().getMonth() // 0-11
-  if (month >= 5 && month <= 7) return 'summer' // Haz-Tem-Ağu
-  if (month === 11 || month <= 1) return 'winter' // Ara-Oca-Şub
-  return 'transitional' // Mar-Nis-May, Eyl-Eki-Kas
+const MONTH_SEASONS: Record<number, Season[]> = {
+  0: ['winter'], // Ocak
+  1: ['winter'], // Şubat
+  2: ['winter', 'autumn', 'spring'], // Mart
+  3: ['spring', 'autumn'], // Nisan
+  4: ['spring', 'summer'], // Mayıs
+  5: ['summer', 'spring'], // Haziran
+  6: ['summer'], // Temmuz
+  7: ['summer'], // Ağustos
+  8: ['autumn', 'summer'], // Eylül
+  9: ['autumn', 'spring'], // Ekim
+  10: ['autumn', 'winter'], // Kasım
+  11: ['winter', 'autumn'], // Aralık
+}
+
+/** Bugün hangi sezon(lar) aktif — ayın overlap zonu döner. */
+export function getCurrentSeasons(): Season[] {
+  return MONTH_SEASONS[new Date().getMonth()] ?? []
+}
+
+/** İlkincil ekran etiketi için tek sezon — ayın ilk eşleşmesi. */
+export function getPrimarySeason(): Season {
+  return getCurrentSeasons()[0] ?? 'all'
 }
 
 /**
  * Bir parça şu an mevsimi dışı mı?
- * Yazlık parça kışın "out of season", kışlık parça yazın.
- * Mevsimlik, tüm-sezon ve etiketsiz parçalar hiçbir zaman mevsim dışı sayılmaz.
+ * Etiketsiz parça → her zaman geçerli.
+ * Diğerleri: parçanın sezonlarından en az biri şu anki ayın overlap setinde olmalı.
  */
-export function isOutOfSeason(itemSeason: Season | undefined, current: Season): boolean {
-  if (!itemSeason || itemSeason === 'all' || itemSeason === 'transitional') return false
-  if (current === 'summer' && itemSeason === 'winter') return true
-  if (current === 'winter' && itemSeason === 'summer') return true
-  return false
+export function isOutOfSeason(
+  itemSeasons: Season[] | undefined,
+  currentSeasons: Season[],
+): boolean {
+  if (!itemSeasons || itemSeasons.length === 0) return false
+  return !itemSeasons.some((s) => currentSeasons.includes(s))
 }

@@ -14,6 +14,7 @@ import { db } from '../firebase'
 import { COLORS } from '../theme'
 import { CATEGORIES, SEASONS, Season } from '../types'
 import {
+  getItemSeasons,
   getStoredSeasonFilter,
   matchesSeasonFilter,
   setStoredSeasonFilter,
@@ -22,6 +23,7 @@ import {
 interface ItemMeta {
   category: string
   season?: Season
+  seasons?: Season[]
 }
 
 const Wardrobe: React.FC = () => {
@@ -50,6 +52,7 @@ const Wardrobe: React.FC = () => {
       const list: ItemMeta[] = snap.docs.map((d) => ({
         category: (d.get('category') as string) ?? '',
         season: d.get('season') as Season | undefined,
+        seasons: d.get('seasons') as Season[] | undefined,
       }))
       setItems(list)
       try {
@@ -67,7 +70,7 @@ const Wardrobe: React.FC = () => {
   const counts = useMemo(() => {
     const out: Record<string, number> = {}
     items.forEach((it) => {
-      if (!matchesSeasonFilter(it.season, seasonFilter)) return
+      if (!matchesSeasonFilter(getItemSeasons(it), seasonFilter)) return
       out[it.category] = (out[it.category] ?? 0) + 1
     })
     return out

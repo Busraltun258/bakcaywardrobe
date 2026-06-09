@@ -9,17 +9,21 @@ export interface ClothingItem {
   userId?: string
   label?: string
   description?: string
-  /** Sezon etiketi: 'summer', 'winter', 'transitional' (geçiş — ilkbahar/sonbahar), 'all' (tüm sezon). */
+  /** Eski tek sezon alanı — geri uyum için saklı. Yeni veriler 'seasons' array'ine yazılır. */
   season?: Season
+  /** Bir parça birden fazla sezona ait olabilir (örn: ['spring', 'autumn']). */
+  seasons?: Season[]
 }
 
-export type Season = 'summer' | 'winter' | 'transitional' | 'all'
+// 'transitional' eski değerdir — backward compat için type'da kalıyor ama UI'da gösterilmiyor.
+export type Season = 'spring' | 'summer' | 'autumn' | 'winter' | 'all' | 'transitional'
 
+// UI'da gösterilen sezonlar — sadece 4 mevsim. 'all' tipte mevcut ama UI'da yok.
 export const SEASONS: { key: Season; label: string; emoji: string }[] = [
-  { key: 'all', label: 'Tüm sezon', emoji: '🌍' },
-  { key: 'summer', label: 'Yazlık', emoji: '☀️' },
-  { key: 'transitional', label: 'Mevsimlik', emoji: '🍂' },
-  { key: 'winter', label: 'Kışlık', emoji: '❄️' },
+  { key: 'spring', label: 'İlkbahar', emoji: '🌸' },
+  { key: 'summer', label: 'Yaz', emoji: '☀️' },
+  { key: 'autumn', label: 'Sonbahar', emoji: '🍂' },
+  { key: 'winter', label: 'Kış', emoji: '❄️' },
 ]
 
 export type OutfitRequestStatus = 'pending' | 'answered' | 'closed'

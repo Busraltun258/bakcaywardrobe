@@ -268,6 +268,8 @@ const AdminHome: React.FC = () => {
                   onDelete={(s) => {
                     modal.confirm({
                       title: 'Bu öneriyi silmek istediğine emin misin?',
+                      content:
+                        'Bu önerinin tek istek için son öneri olması durumunda, talep kartı da silinir.',
                       okText: 'Sil',
                       okType: 'danger',
                       cancelText: 'Vazgeç',
@@ -275,6 +277,15 @@ const AdminHome: React.FC = () => {
                       onOk: async () => {
                         try {
                           await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                          // Bu talep için başka öneri kaldı mı?
+                          const remaining = suggestions.filter(
+                            (x) => x.requestId === s.requestId && x.id !== s.id,
+                          )
+                          if (remaining.length === 0 && s.requestId) {
+                            await deleteDoc(doc(db, 'outfitRequests', s.requestId)).catch(
+                              () => undefined,
+                            )
+                          }
                           message.success('Silindi')
                         } catch {
                           message.error('Silinemedi')
@@ -487,9 +498,6 @@ const SuggestionsList: React.FC<{
                 </Avatar>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, color: COLORS.text }}>{who}</div>
-                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-                    {dayjs(s.createdAt).format('DD MMM HH:mm')}
-                  </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   {ratingTag}
@@ -567,14 +575,17 @@ const SuggestionsList: React.FC<{
               </div>
 
               {s.advisorNote && (
-                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '12px 0 4px' }}>
-                  <strong style={{ color: COLORS.text }}>Notum:</strong> {s.advisorNote}
+                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '12px 0 6px' }}>
+                  <strong style={{ color: COLORS.text }}>📝 Notum:</strong> {s.advisorNote}
                 </p>
               )}
               {s.comment && (
-                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '4px 0 0' }}>
-                  <strong style={{ color: COLORS.text }}>Yanıt:</strong> {s.comment}
-                </p>
+                <div style={styles.userCommentBlock}>
+                  <div style={styles.userCommentLabel}>
+                    💬 {who} yorumu
+                  </div>
+                  <div style={styles.userCommentText}>"{s.comment}"</div>
+                </div>
               )}
               <div style={{ flex: 1 }} />
             </Card>
@@ -599,6 +610,25 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     letterSpacing: 1,
     lineHeight: 1,
+  },
+  userCommentBlock: {
+    marginTop: 10,
+    padding: '8px 12px',
+    background: 'rgba(244,114,182,0.08)',
+    border: '1px solid rgba(244,114,182,0.22)',
+    borderRadius: 10,
+  },
+  userCommentLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#f472b6',
+    marginBottom: 2,
+  },
+  userCommentText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontStyle: 'italic' as const,
+    lineHeight: 1.4,
   },
   dateBlock: {
     background: 'rgba(255,255,255,0.03)',

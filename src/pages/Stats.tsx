@@ -26,7 +26,7 @@ import { db } from '../firebase'
 import { COLORS } from '../theme'
 import { CATEGORIES, ClothingItem, OutfitSuggestion, SEASONS } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
-import { getCurrentRealSeason, isOutOfSeason } from '../utils/seasonFilter'
+import { getCurrentSeasons, getItemSeasons, isOutOfSeason } from '../utils/seasonFilter'
 
 /**
  * Kullanıcı istatistikleri:
@@ -103,12 +103,12 @@ const Stats: React.FC = () => {
     // Yaz ayında kışlık parça flag'lenmez (zaten giyemez).
     const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
-    const currentSeason = getCurrentRealSeason()
+    const currentSeasons = getCurrentSeasons()
     const allUnused = clothes.filter(
       (c) =>
         !usedIds.has(c.id) &&
         (c.createdAt ?? now) <= now - THIRTY_DAYS &&
-        !isOutOfSeason(c.season, currentSeason),
+        !isOutOfSeason(getItemSeasons(c), currentSeasons),
     )
     // En uzun süredir bekleyen başta
     const unusedSorted = [...allUnused].sort(
@@ -326,10 +326,15 @@ const Stats: React.FC = () => {
               1 aydır dolabında olup hiçbir öneride yer almamış parçalar.
               Şu an{' '}
               <strong style={{ color: COLORS.text }}>
-                {SEASONS.find((s) => s.key === getCurrentRealSeason())?.emoji}{' '}
-                {SEASONS.find((s) => s.key === getCurrentRealSeason())?.label}
+                {getCurrentSeasons()
+                  .map((s) => {
+                    const meta = SEASONS.find((x) => x.key === s)
+                    return meta ? `${meta.emoji} ${meta.label}` : ''
+                  })
+                  .filter(Boolean)
+                  .join(' / ')}
               </strong>{' '}
-              olduğu için sezon dışı parçalar (örn. yazın kışlıklar) listelenmez.
+              sezonu olduğu için sezon dışı parçalar (örn. yazın kışlıklar) listelenmez.
             </p>
 
             {/* Kategori dağılımı */}

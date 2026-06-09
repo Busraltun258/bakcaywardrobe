@@ -47,6 +47,7 @@ import {
   SEASONS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { getItemSeasons } from '../utils/seasonFilter'
 import {
   sortByCustomOrder,
   subscribeWardrobeOrders,
@@ -361,12 +362,19 @@ const EditSuggestion: React.FC = () => {
                   src={clothingItemImageSrc(item)}
                   style={{ width: '100%', height: '100%' }}
                 />
-                {/* Sezon rozeti (read-only) */}
-                {item.season && item.season !== 'all' && (
-                  <span style={styles.seasonBadge}>
-                    {SEASONS.find((s) => s.key === item.season)?.emoji}
-                  </span>
-                )}
+                {/* Sezon rozeti (read-only) — birden fazla olabilir */}
+                {(() => {
+                  const seasons = getItemSeasons(item)
+                  if (seasons.length === 0) return null
+                  return (
+                    <span style={styles.seasonBadge}>
+                      {seasons
+                        .map((sk) => SEASONS.find((s) => s.key === sk)?.emoji)
+                        .filter(Boolean)
+                        .join('')}
+                    </span>
+                  )
+                })()}
                 {item.label && <span style={styles.labelTag}>{item.label}</span>}
                 {isSelected && (
                   <div style={styles.check}>

@@ -46,6 +46,7 @@ import {
   UserProfile,
 } from '../../types'
 import { clothingItemImageSrc } from '../../utils/imageUtils'
+import { getItemSeasons } from '../../utils/seasonFilter'
 import {
   sortByCustomOrder,
   subscribeWardrobeOrders,
@@ -143,9 +144,10 @@ const EditDraft: React.FC = () => {
     const bySeason =
       seasonFilter === 'any'
         ? wardrobe
-        : wardrobe.filter(
-            (c) => !c.season || c.season === seasonFilter || c.season === 'all',
-          )
+        : wardrobe.filter((c) => {
+            const seasons = getItemSeasons(c)
+            return seasons.length === 0 || seasons.includes(seasonFilter as Season)
+          })
     const base = catFilter === 'all' ? bySeason : bySeason.filter((c) => c.category === catFilter)
     if (catFilter === 'all') {
       const result: ClothingItem[] = []
@@ -378,12 +380,19 @@ const EditDraft: React.FC = () => {
                     src={clothingItemImageSrc(item)}
                     style={{ width: '100%', height: '100%' }}
                   />
-                  {/* Sezon rozeti (read-only) */}
-                  {item.season && item.season !== 'all' && (
-                    <span style={styles.seasonBadge}>
-                      {SEASONS.find((s) => s.key === item.season)?.emoji}
-                    </span>
-                  )}
+                  {/* Sezon rozeti (read-only) — birden fazla olabilir */}
+                  {(() => {
+                    const seasons = getItemSeasons(item)
+                    if (seasons.length === 0) return null
+                    return (
+                      <span style={styles.seasonBadge}>
+                        {seasons
+                          .map((sk) => SEASONS.find((s) => s.key === sk)?.emoji)
+                          .filter(Boolean)
+                          .join('')}
+                      </span>
+                    )
+                  })()}
                   {(item.label || item.description) && (
                     <span style={styles.labelTag}>{item.label || item.description}</span>
                   )}

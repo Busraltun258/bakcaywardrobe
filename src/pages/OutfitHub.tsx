@@ -724,6 +724,8 @@ const OutfitHub: React.FC = () => {
               onDeleteSuggestion={(s) => {
                 modal.confirm({
                   title: 'Öneriyi sil?',
+                  content:
+                    'Bu, talep için kalan son öneriyse talep kartı da silinir.',
                   okText: 'Sil',
                   okType: 'danger',
                   cancelText: 'Vazgeç',
@@ -731,6 +733,14 @@ const OutfitHub: React.FC = () => {
                   onOk: async () => {
                     try {
                       await deleteDoc(doc(db, 'outfitSuggestions', s.id))
+                      const remaining = suggestions.filter(
+                        (x) => x.requestId === s.requestId && x.id !== s.id,
+                      )
+                      if (remaining.length === 0 && s.requestId) {
+                        await deleteDoc(doc(db, 'outfitRequests', s.requestId)).catch(
+                          () => undefined,
+                        )
+                      }
                       message.success('Silindi')
                     } catch {
                       message.error('Silinemedi')
@@ -851,9 +861,6 @@ const RequestThread: React.FC<RequestThreadProps> = ({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
             {profileName(request.toUid)}
-          </div>
-          <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-            {dayjs(request.createdAt).format('DD MMMM YYYY HH:mm')}
           </div>
         </div>
         {isWeekly && <Tag color="purple">5 gün</Tag>}
@@ -1023,11 +1030,17 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   const [rating, setRating] = useState<number>(s.rating ?? 0)
   const [savingFeedback, setSavingFeedback] = useState(false)
 
+  // Yıldız ve beğeni durumu Firestore'dan canlı senkron; ama yorum input'u
+  // sadece yeni öneriye geçilince (s.id değişince) dolar. Böylece kullanıcı
+  // kaydettikten sonra textarea boşalır, pembe bloktaki kayıtlı yorum kalır.
   useEffect(() => {
     setComment(s.comment ?? '')
+  }, [s.id])
+
+  useEffect(() => {
     setLiked(s.liked ?? null)
     setRating(s.rating ?? 0)
-  }, [s.id, s.comment, s.liked, s.rating])
+  }, [s.id, s.liked, s.rating])
 
   // Üst seviyede yüklenmiş tüm dolaptan parçaları hızlıca seç — fetch yok
   const items = useMemo(() => {
@@ -1057,7 +1070,12 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
       if (newLiked !== undefined) patch.liked = newLiked
       if (newRating !== undefined) patch.rating = newRating
       await updateDoc(doc(db, 'outfitSuggestions', s.id), patch)
-      message.success('Kaydedildi')
+      // Sadece yorum içeren bir save ise input'u temizle.
+      // Yıldız sıfırlama (val === 0) gibi durumlarda commentVal değişmediği için dokunmuyoruz.
+      if (commentVal.trim().length > 0) {
+        setComment('')
+      }
+      message.success('Yorumun gönderildi 💌')
     } catch {
       message.error('Kaydedilemedi')
     } finally {
@@ -1089,19 +1107,6 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
             {profileName(s.advisorUid)}'in önerisi
           </span>
         </div>
-      )}
-
-      {s.advisorNote && (
-        <p
-          style={{
-            fontSize: 13,
-            color: COLORS.textSecondary,
-            margin: '0 0 10px',
-            fontStyle: 'italic',
-          }}
-        >
-          "{s.advisorNote}"
-        </p>
       )}
 
       <div style={styles.thumbsRow}>
@@ -1157,13 +1162,40 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         )}
       </div>
 
-      <Input.TextArea
-        placeholder="Yorum ekle… (örn: gri yerine beyaz, mavi mont)"
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        rows={2}
-        style={{ marginTop: 10 }}
-      />
+      {/* Mesajlaşma: stilistin notu + kullanıcının yorumu alt alta */}
+      {(s.advisorNote || s.comment) && (
+        <div style={styles.chatBlock}>
+          <div style={styles.chatHeader}>💬 Mesajlar</div>
+          {s.advisorNote && (
+            <div style={styles.chatRow}>
+              <span style={styles.chatWho}>
+                ✨ {profileName(s.advisorUid)}
+              </span>
+              <span style={styles.chatText}>"{s.advisorNote}"</span>
+            </div>
+          )}
+          {s.comment && s.comment.trim().length > 0 && (
+            <div style={styles.chatRow}>
+              <span style={{ ...styles.chatWho, color: '#f472b6' }}>
+                💗 Sen
+              </span>
+              <span style={styles.chatText}>"{s.comment}"</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>
+          {s.comment ? 'Yeni yorum ekle veya güncelle:' : 'Yorum ekle:'}
+        </div>
+        <Input.TextArea
+          placeholder="(örn: gri yerine beyaz, mavi mont)"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={2}
+        />
+      </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <Button size="small" onClick={() => saveFeedback(undefined, comment)} loading={savingFeedback}>
           Yorumu Kaydet
@@ -1420,6 +1452,40 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 0',
     marginBottom: 6,
     borderBottom: `1px solid ${COLORS.border}`,
+  },
+  chatBlock: {
+    marginTop: 10,
+    padding: '10px 12px',
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  chatHeader: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.textMuted,
+    marginBottom: 2,
+  },
+  chatRow: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 2,
+    paddingBottom: 4,
+    borderBottom: `1px solid rgba(255,255,255,0.05)`,
+  },
+  chatWho: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.primary,
+  },
+  chatText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontStyle: 'italic' as const,
+    lineHeight: 1.4,
   },
   tabCount: {
     marginLeft: 6,

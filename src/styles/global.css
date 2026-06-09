@@ -146,6 +146,12 @@ body {
   min-height: 36px;
 }
 
+/* Sezon multi-select picker — sağa açılış animasyonu */
+@keyframes bk-season-open {
+  from { transform: translateX(-8px) scale(0.85); opacity: 0; }
+  to   { transform: translateX(0)     scale(1);    opacity: 1; }
+}
+
 /* Banner tıklanınca değerlendirilmemiş öneri 2.5sn parlasın */
 .bk-pulse-highlight {
   animation: bk-pulse-glow 2.5s ease-out;

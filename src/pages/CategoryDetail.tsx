@@ -42,7 +42,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import SmartImage from '../components/SmartImage'
@@ -51,6 +51,7 @@ import { db } from '../firebase'
 import { COLORS } from '../theme'
 import { CATEGORIES, ClothingItem, SEASONS, Season } from '../types'
 import {
+  getItemSeasons,
   getStoredSeasonFilter,
   matchesSeasonFilter,
   setStoredSeasonFilter,
@@ -79,17 +80,13 @@ const CategoryDetail: React.FC = () => {
   const [editLabel, setEditLabel] = useState('')
   const [enlargedItem, setEnlargedItem] = useState<ClothingItem | null>(null)
   const [customOrder, setCustomOrder] = useState<string[]>([])
-  
-  // O anda sürüklenen resmi havada uçurmak için ID takibi
   const [activeId, setActiveId] = useState<string | null>(null)
 
-  // Dokunmatik ve Masaüstü için optimize hassas sensörler
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      // 150ms basılı tutunca sürükleme canlanır, normal kaydırmayı engellemez
       activationConstraint: { delay: 150, tolerance: 8 },
     }),
   )
@@ -158,11 +155,10 @@ const CategoryDetail: React.FC = () => {
     return () => unsubscribe()
   }, [categoryKey, user, cacheKey])
 
-  // Wardrobe sayfasında seçilen sezon filtresini al — localStorage'tan canlı oku
   const [seasonFilter, setSeasonFilter] = useState<Set<Season>>(() =>
     getStoredSeasonFilter(),
   )
-  // Diğer sekmeden değişirse senkron olsun
+
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'bk_wardrobe_season_filter') {
@@ -175,10 +171,9 @@ const CategoryDetail: React.FC = () => {
 
   const orderedItems = useMemo(() => {
     const sorted = sortByCustomOrder(items, customOrder)
-    return sorted.filter((c) => matchesSeasonFilter(c.season, seasonFilter))
+    return sorted.filter((c) => matchesSeasonFilter(getItemSeasons(c), seasonFilter))
   }, [items, customOrder, seasonFilter])
 
-  // Havada uçan aktif kıyafeti bulalım
   const activeItem = useMemo(
     () => items.find((item) => item.id === activeId),
     [items, activeId],
@@ -245,15 +240,15 @@ const CategoryDetail: React.FC = () => {
     setEditingId(null)
   }
 
-  // Sezonu döngüsel olarak değiştir: 🌍 → ☀️ → 🍂 → ❄️ → 🌍
-  const cycleSeason = async (item: ClothingItem) => {
-    const order: Season[] = ['all', 'summer', 'transitional', 'winter']
-    const currentIdx = order.indexOf(item.season ?? 'all')
-    const nextSeason = order[(currentIdx + 1) % order.length]
+  const toggleItemSeason = async (item: ClothingItem, season: Season) => {
+    const current = getItemSeasons(item)
+    const has = current.includes(season)
+    const next = has ? current.filter((s) => s !== season) : [...current, season]
     try {
-      await updateDoc(doc(db, 'clothes', item.id), { season: nextSeason })
-      const label = SEASONS.find((s) => s.key === nextSeason)?.label
-      message.success(`${label}`)
+      await updateDoc(doc(db, 'clothes', item.id), {
+        seasons: next,
+        season: null,
+      })
     } catch (e) {
       console.error(e)
       message.error('Sezon değiştirilemedi')
@@ -266,7 +261,7 @@ const CategoryDetail: React.FC = () => {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    setActiveId(null) // Uçuş bitti, sıfırla
+    setActiveId(null)
     
     if (!over || active.id === over.id) return
     const ids = orderedItems.map((i) => i.id)
@@ -299,7 +294,6 @@ const CategoryDetail: React.FC = () => {
   return (
     <AppLayout>
       <div className="bk-container">
-        {/* Header */}
         <div style={styles.header}>
           <Button
             type="text"
@@ -371,7 +365,6 @@ const CategoryDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Content */}
         {loading ? (
           <div style={styles.grid}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -414,13 +407,12 @@ const CategoryDetail: React.FC = () => {
                     onStartEdit={() => startEdit(item)}
                     onSaveLabel={() => saveLabel(item)}
                     onCancelEdit={() => setEditingId(null)}
-                    onCycleSeason={() => cycleSeason(item)}
+                    onToggleSeason={(season) => toggleItemSeason(item, season)}
                   />
                 ))}
               </div>
             </SortableContext>
 
-            {/* DRAG OVERLAY: Parmağın altında özgürce uçan katman */}
             <DragOverlay adjustScale={true} style={{ zIndex: 9999 }}>
               {activeItem ? (
                 <div
@@ -505,7 +497,7 @@ const SortableCell: React.FC<{
   onStartEdit: () => void
   onSaveLabel: () => void
   onCancelEdit: () => void
-  onCycleSeason: () => void
+  onToggleSeason: (season: Season) => void
 }> = ({
   item,
   isOwner,
@@ -517,8 +509,24 @@ const SortableCell: React.FC<{
   onStartEdit,
   onSaveLabel,
   onCancelEdit,
-  onCycleSeason,
+  onToggleSeason,
 }) => {
+  const [seasonPickerOpen, setSeasonPickerOpen] = useState(false)
+  const seasonPickerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!seasonPickerOpen) return
+    const onDocPointer = (e: PointerEvent) => {
+      if (!seasonPickerRef.current) return
+      if (!(e.target instanceof Node)) return
+      if (seasonPickerRef.current.contains(e.target)) return
+      setSeasonPickerOpen(false)
+    }
+    document.addEventListener('pointerdown', onDocPointer, false)
+    return () => document.removeEventListener('pointerdown', onDocPointer, false)
+  }, [seasonPickerOpen])
+
+  const itemSeasons = getItemSeasons(item)
   const {
     attributes,
     listeners,
@@ -532,10 +540,8 @@ const SortableCell: React.FC<{
     ...styles.card,
     transform: CSS.Transform.toString(transform),
     transition,
-    // Sürüklenen orijinal yerdeki kart arkada hafif soluk bir 'gölge/iz' olarak kalır
     opacity: isDragging ? 0.25 : 1,
     zIndex: isDragging ? 0 : 1,
-    // Sadece sürükleme anında scroll'u durdur, normal dururken sayfa kaydırılabilsin
     touchAction: isDragging ? 'none' : 'auto',
   }
 
@@ -561,20 +567,56 @@ const SortableCell: React.FC<{
 
       {isOwner && !isEditing && (
         <>
-          {/* Sezon tıkla-değiştir butonu (sol-üst) — döngü: 🌍→☀️→🍂→❄️ */}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              onCycleSeason()
+              setSeasonPickerOpen((v) => !v)
             }}
             style={styles.seasonBtn}
-            title="Sezon değiştir"
+            title="Sezon seç"
           >
-            {SEASONS.find((s) => s.key === (item.season ?? 'all'))?.emoji}
+            {itemSeasons.length === 0
+              ? '🔖'
+              : itemSeasons
+                  .map((sk) => SEASONS.find((s) => s.key === sk)?.emoji)
+                  .filter(Boolean)
+                  .join('')}
           </button>
+
+          {seasonPickerOpen && (
+            <div
+              ref={seasonPickerRef}
+              style={styles.seasonPicker}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              {SEASONS.map((s) => {
+                const active = itemSeasons.includes(s.key)
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleSeason(s.key)
+                      // bırakma: picker açık kalsın, kullanıcı başka sezonlar da seçebilsin
+                    }}
+                    style={{
+                      ...styles.seasonPickerBtn,
+                      ...(active ? styles.seasonPickerBtnActive : {}),
+                    }}
+                    title={s.label}
+                  >
+                    {s.emoji}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           <Button
             type="text"
             danger
@@ -763,21 +805,55 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute' as const,
     top: 6,
     left: 6,
-    width: 26,
+    minWidth: 26,
     height: 26,
-    borderRadius: '50%',
+    padding: '0 6px',
+    borderRadius: 13,
     border: 'none',
     background: 'rgba(0,0,0,0.6)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
     color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 1,
+    letterSpacing: -1,
     cursor: 'pointer',
     zIndex: 4,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  seasonPicker: {
+    position: 'absolute' as const,
+    top: 6,
+    left: 38,
+    background: 'rgba(0,0,0,0.78)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    padding: 3,
+    display: 'flex',
+    gap: 2,
+    zIndex: 6,
+    animation: 'bk-season-open 0.18s ease-out',
+  },
+  seasonPickerBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: '50%',
+    border: '2px solid transparent',
+    background: 'transparent',
+    fontSize: 14,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  },
+  seasonPickerBtnActive: {
+    borderColor: '#7c8cff',
+    background: 'rgba(124,140,255,0.25)',
   },
   empty: {
     display: 'flex',
