@@ -28,6 +28,7 @@ import {
   OutfitSuggestion,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { getWornDate, isWorn } from '../utils/outfitDate'
 
 /**
  * Kıyafet Günlüğü (read-only)
@@ -124,23 +125,16 @@ const OutfitDiary: React.FC = () => {
   // Yani 9 Haziran kombini → 10 Haziran sabah 06:00'a kadar "Yaklaşan/Bugün",
   // 10 Haziran 06:00'dan sonra "Geçmiş".
   const planned: PlannedOutfit[] = useMemo(() => {
-    const now = dayjs()
     const list: PlannedOutfit[] = []
     suggestions.forEach((s) => {
       const r = requests[s.requestId]
       if (!r) return
-      let date: string | undefined
-      if (r.requestType === 'weekly' && typeof s.dayIndex === 'number' && r.weekStartDate) {
-        date = dayjs(r.weekStartDate).add(s.dayIndex, 'day').format('YYYY-MM-DD')
-      } else if (r.requestDate) {
-        date = r.requestDate
-      }
+      const date = getWornDate(s, r)
       if (!date) return
-      // Ertesi sabah 06:00 cut-off
-      const cutoff = dayjs(date).add(1, 'day').hour(6).minute(0).second(0)
+      // Ertesi gün TR saati 06:00 cut-off (Türkiye saatine göre giyildi)
       list.push({
         date,
-        isPast: now.isAfter(cutoff),
+        isPast: isWorn(date),
         suggestion: s,
         request: r,
       })

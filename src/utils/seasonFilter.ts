@@ -65,19 +65,19 @@ export function matchesSeasonFilter(
 /**
  * Türkiye'de iklim geçişleri yumuşaktır; çoğu ay 1-3 sezona girer.
  * Kullanıcının verdiği geçiş tablosu:
- *   Ocak: Kış · Şubat: Kış · Mart: Kış+Sonbahar+İlkbahar
+ *   Ocak: Kış · Şubat: Kış · Mart: Kış+Sonbahar
  *   Nisan: İlkbahar+Sonbahar · Mayıs: İlkbahar+Yaz
- *   Haziran: Yaz+İlkbahar · Temmuz: Yaz · Ağustos: Yaz
+ *   Haziran: Yaz · Temmuz: Yaz · Ağustos: Yaz
  *   Eylül: Sonbahar+Yaz · Ekim: Sonbahar+İlkbahar
  *   Kasım: Sonbahar+Kış · Aralık: Kış+Sonbahar
  */
 const MONTH_SEASONS: Record<number, Season[]> = {
   0: ['winter'], // Ocak
   1: ['winter'], // Şubat
-  2: ['winter', 'autumn', 'spring'], // Mart
+  2: ['winter', 'autumn'], // Mart
   3: ['spring', 'autumn'], // Nisan
   4: ['spring', 'summer'], // Mayıs
-  5: ['summer', 'spring'], // Haziran
+  5: ['summer'], // Haziran
   6: ['summer'], // Temmuz
   7: ['summer'], // Ağustos
   8: ['autumn', 'summer'], // Eylül

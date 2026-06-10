@@ -208,16 +208,22 @@ const RespondOutfit: React.FC = () => {
     }
     setSaving(true)
     try {
+      const now = Date.now()
+      const trimmedNote = note.trim()
       const payload: Record<string, unknown> = {
         requestId: req.id,
         requesterUid: req.fromUid,
         advisorUid: user.uid,
         clothingItemIds: Array.from(selected),
-        advisorNote: note.trim(),
-        createdAt: Date.now(),
+        advisorNote: trimmedNote,
+        createdAt: now,
         liked: null,
         comment: '',
         feedbackAt: null,
+        // Mesaj geçmişini stilistin ilk notuyla başlat (varsa)
+        messages: trimmedNote
+          ? [{ role: 'advisor', uid: user.uid, text: trimmedNote, at: now }]
+          : [],
       }
       if (isWeekly) payload.dayIndex = dayIndex
 

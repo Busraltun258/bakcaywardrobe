@@ -25,8 +25,9 @@ import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { ClothingItem, OutfitSuggestion, UserProfile } from '../types'
+import { ClothingItem, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { getWornDate } from '../utils/outfitDate'
 
 /**
  * Kullanıcının beğendiği (liked='yes') tüm kombin önerilerini görüntüleyen sayfa.
@@ -37,6 +38,7 @@ const Favorites: React.FC = () => {
   const navigate = useNavigate()
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
   const [items, setItems] = useState<Record<string, ClothingItem>>({})
+  const [requests, setRequests] = useState<Record<string, OutfitRequest>>({})
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({})
   const [lightboxItem, setLightboxItem] = useState<ClothingItem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -99,6 +101,30 @@ const Favorites: React.FC = () => {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestions.map((s) => s.id).join('|')])
+
+  // Önerilere ait talepleri yükle — kombinin giyileceği/giyildiği tarih için
+  useEffect(() => {
+    const ids = Array.from(new Set(suggestions.map((s) => s.requestId).filter(Boolean)))
+    const need = ids.filter((id) => !requests[id])
+    if (need.length === 0) return
+    ;(async () => {
+      const map: Record<string, OutfitRequest> = {}
+      for (let i = 0; i < need.length; i += 30) {
+        const chunk = need.slice(i, i + 30)
+        try {
+          const q = query(collection(db, 'outfitRequests'), where(documentId(), 'in', chunk))
+          const snap = await getDocs(q)
+          snap.docs.forEach((d) => {
+            map[d.id] = { id: d.id, ...d.data() } as OutfitRequest
+          })
+        } catch {
+          /* ignore */
+        }
+      }
+      setRequests((prev) => ({ ...prev, ...map }))
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions.map((s) => s.requestId).join('|')])
 
   // Stilist profillerini yükle
   useEffect(() => {
@@ -181,6 +207,7 @@ const Favorites: React.FC = () => {
           filtered.map((s) => {
             const advisor =
               profiles[s.advisorUid]?.displayName ?? profiles[s.advisorUid]?.username ?? 'Stilist'
+            const wornDate = getWornDate(s, requests[s.requestId])
             return (
               <Card key={s.id} style={{ marginBottom: 12 }}>
                 <div style={styles.cardHeader}>
@@ -191,7 +218,9 @@ const Favorites: React.FC = () => {
                     </strong>
                     <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
                       <CalendarOutlined style={{ marginRight: 4 }} />
-                      {dayjs(s.feedbackAt ?? s.createdAt).format('DD MMM YYYY')}
+                      {wornDate
+                        ? `Giyildiği gün: ${dayjs(wornDate).format('DD MMM YYYY')}`
+                        : dayjs(s.feedbackAt ?? s.createdAt).format('DD MMM YYYY')}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>

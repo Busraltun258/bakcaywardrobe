@@ -42,11 +42,13 @@ import { COLORS } from '../theme'
 import {
   CATEGORIES,
   ClothingItem,
+  OutfitMessage,
   OutfitRequest,
   OutfitSuggestion,
   SEASONS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { appendMessage, buildThread } from '../utils/outfitMessages'
 import { getItemSeasons } from '../utils/seasonFilter'
 import {
   sortByCustomOrder,
@@ -175,13 +177,27 @@ const EditSuggestion: React.FC = () => {
     }
     setSaving(true)
     try {
+      const trimmedNote = note.trim()
+      // Notu değiştiyse mesaj geçmişine yeni bir stilist mesajı ekle (silmeden).
+      const thread = buildThread(suggestion)
+      const lastAdvisor = [...thread].reverse().find((m) => m.role === 'advisor')
+      const noteChanged = !!trimmedNote && trimmedNote !== lastAdvisor?.text
+      const newMessages: OutfitMessage[] | undefined = noteChanged
+        ? appendMessage(suggestion, {
+            role: 'advisor',
+            uid: suggestion.advisorUid,
+            text: trimmedNote,
+            at: Date.now(),
+          })
+        : undefined
       await updateDoc(doc(db, 'outfitSuggestions', suggestion.id), {
         clothingItemIds: Array.from(selected),
-        advisorNote: note.trim(),
+        advisorNote: trimmedNote,
         liked: null,
         comment: '',
         feedbackAt: null,
         editedAt: Date.now(),
+        ...(newMessages ? { messages: newMessages } : {}),
       })
       message.success('Öneri güncellendi! Kullanıcı tekrar değerlendirecek.')
       navigate('/home', { replace: true })

@@ -99,15 +99,15 @@ const Stats: React.FC = () => {
       })
 
     const usedIds = new Set(usage.keys())
-    // Unutulmuş: dolapta en az 30 gündür olan + hiç öneride görmemiş + ŞU AN SEZONUNDA OLAN.
+    // Unutulmuş: dolapta en az 45 gündür olan + hiç öneride görmemiş + ŞU AN SEZONUNDA OLAN.
     // Yaz ayında kışlık parça flag'lenmez (zaten giyemez).
-    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+    const FORTY_FIVE_DAYS = 45 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const currentSeasons = getCurrentSeasons()
     const allUnused = clothes.filter(
       (c) =>
         !usedIds.has(c.id) &&
-        (c.createdAt ?? now) <= now - THIRTY_DAYS &&
+        (c.createdAt ?? now) <= now - FORTY_FIVE_DAYS &&
         !isOutOfSeason(getItemSeasons(c), currentSeasons),
     )
     // En uzun süredir bekleyen başta
@@ -317,13 +317,13 @@ const Stats: React.FC = () => {
             title={
               <span style={{ fontSize: 15, fontWeight: 600 }}>
                 <WarningOutlined style={{ color: COLORS.warning, marginRight: 8 }} />
-                1 Aydır Kullanılmayan ({stats.unused.length})
+                45 Gündür Kullanılmayan ({stats.unused.length})
               </span>
             }
             style={{ marginBottom: 16 }}
           >
             <p style={{ fontSize: 12, color: COLORS.textMuted, margin: '0 0 10px' }}>
-              1 aydır dolabında olup hiçbir öneride yer almamış parçalar.
+              45 gündür dolabında olup hiçbir öneride yer almamış parçalar.
               Şu an{' '}
               <strong style={{ color: COLORS.text }}>
                 {getCurrentSeasons()

@@ -53,6 +53,7 @@ import { db } from '../firebase'
 import { COLORS } from '../theme'
 import {
   ClothingItem,
+  OutfitMessage,
   OutfitRequest,
   OutfitSuggestion,
   RequestType,
@@ -60,6 +61,7 @@ import {
   WEEKDAYS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { appendMessage, buildThread } from '../utils/outfitMessages'
 import {
   CityDistrict,
   DEFAULT_LOCATION,
@@ -1025,16 +1027,16 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   compact = false,
 }) => {
   const { message } = App.useApp()
-  const [comment, setComment] = useState(s.comment ?? '')
+  const { user } = useAuth()
+  // Compose kutusu — her zaman boş başlar (chat tarzı). Gönderince temizlenir.
+  const [comment, setComment] = useState('')
   const [, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
   const [rating, setRating] = useState<number>(s.rating ?? 0)
   const [savingFeedback, setSavingFeedback] = useState(false)
 
-  // Yıldız ve beğeni durumu Firestore'dan canlı senkron; ama yorum input'u
-  // sadece yeni öneriye geçilince (s.id değişince) dolar. Böylece kullanıcı
-  // kaydettikten sonra textarea boşalır, pembe bloktaki kayıtlı yorum kalır.
+  // Yeni öneriye geçince (s.id değişince) compose kutusunu boşalt.
   useEffect(() => {
-    setComment(s.comment ?? '')
+    setComment('')
   }, [s.id])
 
   useEffect(() => {
@@ -1051,30 +1053,54 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     return map
   }, [s.clothingItemIds, allClothes])
 
-  const saveFeedback = async (
-    newLiked: 'yes' | 'no' | undefined,
-    commentVal: string,
-    newRating?: number,
-  ) => {
+  // Tüm mesaj geçmişi (ağaç) — eski kayıtlarda advisorNote+comment'ten türetilir.
+  const thread = useMemo(() => buildThread(s), [s])
+
+  // Sadece yıldız/beğeni — yorum ve mesaj geçmişine DOKUNMAZ.
+  const saveRating = async (newLiked: 'yes' | 'no' | undefined, newRating: number) => {
     setSavingFeedback(true)
     try {
+      const patch: { feedbackAt: number; liked?: 'yes' | 'no'; rating: number } = {
+        feedbackAt: Date.now(),
+        rating: newRating,
+      }
+      if (newLiked !== undefined) patch.liked = newLiked
+      await updateDoc(doc(db, 'outfitSuggestions', s.id), patch)
+    } catch {
+      message.error('Kaydedilemedi')
+    } finally {
+      setSavingFeedback(false)
+    }
+  }
+
+  // Kullanıcı yorumu gönder — mesaj geçmişine EKLER (silmeden), kutuyu temizler.
+  const sendComment = async (newLiked?: 'yes' | 'no') => {
+    const text = comment.trim()
+    if (!text) {
+      message.warning('Önce bir şeyler yaz 😊')
+      return
+    }
+    setSavingFeedback(true)
+    try {
+      const msg: OutfitMessage = {
+        role: 'user',
+        uid: user?.uid ?? s.requesterUid ?? '',
+        text,
+        at: Date.now(),
+      }
       const patch: {
         comment: string
         feedbackAt: number
+        messages: OutfitMessage[]
         liked?: 'yes' | 'no'
-        rating?: number
       } = {
-        comment: commentVal.trim(),
+        comment: text,
         feedbackAt: Date.now(),
+        messages: appendMessage(s, msg),
       }
       if (newLiked !== undefined) patch.liked = newLiked
-      if (newRating !== undefined) patch.rating = newRating
       await updateDoc(doc(db, 'outfitSuggestions', s.id), patch)
-      // Sadece yorum içeren bir save ise input'u temizle.
-      // Yıldız sıfırlama (val === 0) gibi durumlarda commentVal değişmediği için dokunmuyoruz.
-      if (commentVal.trim().length > 0) {
-        setComment('')
-      }
+      setComment('')
       message.success('Yorumun gönderildi 💌')
     } catch {
       message.error('Kaydedilemedi')
@@ -1087,12 +1113,12 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     setRating(val)
     // 5 yıldız = favori, 1-4 yıldız = beğenildi ama favori değil, 0 = nötr.
     if (val === 0) {
-      saveFeedback(undefined, comment, val)
+      saveRating(undefined, val)
       return
     }
     const newLiked: 'yes' | 'no' = val >= 3 ? 'yes' : 'no'
     setLiked(newLiked)
-    saveFeedback(newLiked, comment, val)
+    saveRating(newLiked, val)
   }
 
   return (
@@ -1162,32 +1188,31 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         )}
       </div>
 
-      {/* Mesajlaşma: stilistin notu + kullanıcının yorumu alt alta */}
-      {(s.advisorNote || s.comment) && (
+      {/* Mesajlaşma: stilist ↔ kullanıcı tüm geçmiş, ağaç gibi alt alta */}
+      {thread.length > 0 && (
         <div style={styles.chatBlock}>
           <div style={styles.chatHeader}>💬 Mesajlar</div>
-          {s.advisorNote && (
-            <div style={styles.chatRow}>
-              <span style={styles.chatWho}>
-                ✨ {profileName(s.advisorUid)}
+          {thread.map((m, i) => (
+            <div key={i} style={styles.chatRow}>
+              <span
+                style={{
+                  ...styles.chatWho,
+                  ...(m.role === 'user' ? { color: '#f472b6' } : {}),
+                }}
+              >
+                {m.role === 'advisor'
+                  ? `✨ ${profileName(m.uid || s.advisorUid)}`
+                  : '💗 Sen'}
               </span>
-              <span style={styles.chatText}>"{s.advisorNote}"</span>
+              <span style={styles.chatText}>"{m.text}"</span>
             </div>
-          )}
-          {s.comment && s.comment.trim().length > 0 && (
-            <div style={styles.chatRow}>
-              <span style={{ ...styles.chatWho, color: '#f472b6' }}>
-                💗 Sen
-              </span>
-              <span style={styles.chatText}>"{s.comment}"</span>
-            </div>
-          )}
+          ))}
         </div>
       )}
 
       <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>
-          {s.comment ? 'Yeni yorum ekle veya güncelle:' : 'Yorum ekle:'}
+          {thread.length > 0 ? 'Yanıt yaz:' : 'Yorum ekle:'}
         </div>
         <Input.TextArea
           placeholder="(örn: gri yerine beyaz, mavi mont)"
@@ -1197,8 +1222,8 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-        <Button size="small" onClick={() => saveFeedback(undefined, comment)} loading={savingFeedback}>
-          Yorumu Kaydet
+        <Button size="small" onClick={() => sendComment()} loading={savingFeedback}>
+          {thread.length > 0 ? 'Yanıtla' : 'Yorumu Kaydet'}
         </Button>
         <Button
           size="small"
@@ -1206,8 +1231,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
           icon={<CommentOutlined />}
           onClick={() => {
             setLiked('no')
-            saveFeedback('no', comment)
-            message.info('Değişiklik talebin stiliste iletildi 💌')
+            sendComment('no')
           }}
         >
           Değişiklik İste

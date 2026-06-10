@@ -55,6 +55,15 @@ export interface OutfitRequest {
 
 export type OutfitLiked = 'yes' | 'no' | null
 
+/** Bir öneri altındaki tek bir mesaj (stilist notu veya kullanıcı yorumu). */
+export interface OutfitMessage {
+  /** 'advisor' = stilist, 'user' = kombini isteyen kullanıcı. */
+  role: 'advisor' | 'user'
+  uid: string
+  text: string
+  at: number
+}
+
 export interface OutfitSuggestion {
   id: string
   requestId: string
@@ -70,6 +79,11 @@ export interface OutfitSuggestion {
   dayIndex?: number
   /** 1-5 yıldız değerlendirme. 5 yıldız favori demek. */
   rating?: 1 | 2 | 3 | 4 | 5
+  /**
+   * Stilist ↔ kullanıcı arasındaki tüm mesaj geçmişi (ağaç gibi, silinmeden).
+   * Eski kayıtlarda yok — o durumda advisorNote + comment'ten türetilir.
+   */
+  messages?: OutfitMessage[]
 }
 
 /**

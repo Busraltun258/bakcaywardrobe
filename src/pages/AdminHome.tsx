@@ -18,6 +18,7 @@ import {
   Card,
   Col,
   Empty,
+  Input,
   Row,
   Skeleton,
   Statistic,
@@ -34,6 +35,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  updateDoc,
   where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
@@ -44,8 +46,9 @@ import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { ClothingItem, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
+import { ClothingItem, OutfitMessage, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
+import { appendMessage, buildThread } from '../utils/outfitMessages'
 
 const AdminHome: React.FC = () => {
   const { user } = useAuth()
@@ -262,6 +265,7 @@ const AdminHome: React.FC = () => {
                   rows={rows}
                   clothesCache={clothesCache}
                   profileName={profileName}
+                  advisorUid={user?.uid ?? ''}
                   loading={loading}
                   onPreview={(item) => setLightboxItem(item)}
                   onEdit={(s) => navigate(`/kombin/duzenle/${s.id}`)}
@@ -422,11 +426,12 @@ const SuggestionsList: React.FC<{
   rows: { s: OutfitSuggestion; r: OutfitRequest | undefined }[]
   clothesCache: Record<string, ClothingItem>
   profileName: (uid: string) => string
+  advisorUid: string
   loading: boolean
   onPreview: (item: ClothingItem) => void
   onEdit: (s: OutfitSuggestion) => void
   onDelete: (s: OutfitSuggestion) => void
-}> = ({ rows, clothesCache, profileName, loading, onPreview, onEdit, onDelete }) => {
+}> = ({ rows, clothesCache, profileName, advisorUid, loading, onPreview, onEdit, onDelete }) => {
   if (loading) {
     return (
       <Card>
@@ -574,25 +579,98 @@ const SuggestionsList: React.FC<{
                 })}
               </div>
 
-              {s.advisorNote && (
-                <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: '12px 0 6px' }}>
-                  <strong style={{ color: COLORS.text }}>📝 Notum:</strong> {s.advisorNote}
-                </p>
-              )}
-              {s.comment && (
-                <div style={styles.userCommentBlock}>
-                  <div style={styles.userCommentLabel}>
-                    💬 {who} yorumu
-                  </div>
-                  <div style={styles.userCommentText}>"{s.comment}"</div>
-                </div>
-              )}
+              <SuggestionThread
+                s={s}
+                who={who}
+                advisorUid={advisorUid}
+                profileName={profileName}
+              />
               <div style={{ flex: 1 }} />
             </Card>
           </Col>
         )
       })}
     </Row>
+  )
+}
+
+/** Bir öneri altındaki stilist ↔ kullanıcı mesaj geçmişi + stilist cevap kutusu. */
+const SuggestionThread: React.FC<{
+  s: OutfitSuggestion
+  who: string
+  advisorUid: string
+  profileName: (uid: string) => string
+}> = ({ s, who, advisorUid, profileName }) => {
+  const { message } = App.useApp()
+  const [reply, setReply] = useState('')
+  const [sending, setSending] = useState(false)
+  const thread = buildThread(s)
+
+  const sendReply = async () => {
+    const text = reply.trim()
+    if (!text) {
+      message.warning('Önce bir şeyler yaz 😊')
+      return
+    }
+    setSending(true)
+    try {
+      const msg: OutfitMessage = { role: 'advisor', uid: advisorUid, text, at: Date.now() }
+      await updateDoc(doc(db, 'outfitSuggestions', s.id), {
+        messages: appendMessage(s, msg),
+        advisorNote: text,
+      })
+      setReply('')
+      message.success('Yanıtın gönderildi 💌')
+    } catch {
+      message.error('Gönderilemedi')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {thread.length > 0 && (
+        <div style={styles.threadBlock}>
+          {thread.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                ...styles.threadRow,
+                ...(m.role === 'user' ? styles.threadRowUser : styles.threadRowAdvisor),
+              }}
+            >
+              <div
+                style={{
+                  ...styles.threadWho,
+                  color: m.role === 'user' ? '#f472b6' : COLORS.primary,
+                }}
+              >
+                {m.role === 'advisor' ? `📝 ${profileName(m.uid || s.advisorUid)}` : `💬 ${who}`}
+              </div>
+              <div style={styles.threadText}>"{m.text}"</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Input.TextArea
+        placeholder={`${who} kullanıcısına yanıt yaz…`}
+        value={reply}
+        onChange={(e) => setReply(e.target.value)}
+        rows={2}
+        style={{ marginTop: 8 }}
+      />
+      <Button
+        size="small"
+        type="primary"
+        icon={<CommentOutlined />}
+        onClick={sendReply}
+        loading={sending}
+        style={{ marginTop: 8 }}
+      >
+        Yanıtla
+      </Button>
+    </div>
   )
 }
 
@@ -610,6 +688,40 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     letterSpacing: 1,
     lineHeight: 1,
+  },
+  threadBlock: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+    padding: '8px 10px',
+    background: 'rgba(255,255,255,0.03)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+  },
+  threadRow: {
+    padding: '6px 10px',
+    borderRadius: 8,
+    borderLeft: '3px solid transparent',
+  },
+  threadRowAdvisor: {
+    background: 'rgba(124,140,255,0.08)',
+    borderLeftColor: COLORS.primary,
+  },
+  threadRowUser: {
+    background: 'rgba(244,114,182,0.08)',
+    borderLeftColor: '#f472b6',
+    marginLeft: 14,
+  },
+  threadWho: {
+    fontSize: 11,
+    fontWeight: 600,
+    marginBottom: 2,
+  },
+  threadText: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontStyle: 'italic' as const,
+    lineHeight: 1.4,
   },
   userCommentBlock: {
     marginTop: 10,
