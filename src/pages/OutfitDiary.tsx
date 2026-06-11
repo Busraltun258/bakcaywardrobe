@@ -121,9 +121,9 @@ const OutfitDiary: React.FC = () => {
   }, [user])
 
   // Her öneri için tarih hesapla → planlanmış kombin listesi.
-  // isPast: kombinin TARİHİ + 1 GÜN sabah 06:00'i geçmişse "giyildi" sayılır.
-  // Yani 9 Haziran kombini → 10 Haziran sabah 06:00'a kadar "Yaklaşan/Bugün",
-  // 10 Haziran 06:00'dan sonra "Geçmiş".
+  // isPast: kombinin TARİHİ, sabah 06:00'i (TR) geçmişse "giyildi" sayılır.
+  // Yani 9 Haziran kombini → 9 Haziran sabah 06:00'a kadar "Yaklaşan/Planlandı",
+  // 9 Haziran 06:00'dan sonra "Geçmiş".
   const planned: PlannedOutfit[] = useMemo(() => {
     const list: PlannedOutfit[] = []
     suggestions.forEach((s) => {

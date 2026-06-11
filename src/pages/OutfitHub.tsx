@@ -61,7 +61,7 @@ import {
   WEEKDAYS,
 } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
-import { appendMessage, buildThread } from '../utils/outfitMessages'
+import { buildThread, sendMessageToSuggestion } from '../utils/outfitMessages'
 import {
   CityDistrict,
   DEFAULT_LOCATION,
@@ -1088,18 +1088,12 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         text,
         at: Date.now(),
       }
-      const patch: {
-        comment: string
-        feedbackAt: number
-        messages: OutfitMessage[]
-        liked?: 'yes' | 'no'
-      } = {
+      const extra: { comment: string; feedbackAt: number; liked?: 'yes' | 'no' } = {
         comment: text,
         feedbackAt: Date.now(),
-        messages: appendMessage(s, msg),
       }
-      if (newLiked !== undefined) patch.liked = newLiked
-      await updateDoc(doc(db, 'outfitSuggestions', s.id), patch)
+      if (newLiked !== undefined) extra.liked = newLiked
+      await sendMessageToSuggestion(s.id, msg, extra)
       setComment('')
       message.success('Yorumun gönderildi 💌')
     } catch {

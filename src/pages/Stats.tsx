@@ -101,11 +101,13 @@ const Stats: React.FC = () => {
     const usedIds = new Set(usage.keys())
     // Unutulmuş: dolapta en az 45 gündür olan + hiç öneride görmemiş + ŞU AN SEZONUNDA OLAN.
     // Yaz ayında kışlık parça flag'lenmez (zaten giyemez).
+    // Aksesuarlar istatistiğe dahil edilmez.
     const FORTY_FIVE_DAYS = 45 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const currentSeasons = getCurrentSeasons()
     const allUnused = clothes.filter(
       (c) =>
+        c.category !== 'aksesuar' &&
         !usedIds.has(c.id) &&
         (c.createdAt ?? now) <= now - FORTY_FIVE_DAYS &&
         !isOutOfSeason(getItemSeasons(c), currentSeasons),
@@ -142,11 +144,15 @@ const Stats: React.FC = () => {
   }, [suggestions, clothes])
 
   const categoryStats = useMemo(() => {
-    return CATEGORIES.map((cat) => {
-      const count = clothes.filter((c) => c.category === cat.key).length
-      const pct = clothes.length > 0 ? Math.round((count / clothes.length) * 100) : 0
-      return { ...cat, count, pct }
-    }).sort((a, b) => b.count - a.count)
+    // Aksesuarlar istatistiğe katılmaz — yüzdeler de aksesuarsız toplam üzerinden.
+    const denom = clothes.filter((c) => c.category !== 'aksesuar').length
+    return CATEGORIES.filter((cat) => cat.key !== 'aksesuar')
+      .map((cat) => {
+        const count = clothes.filter((c) => c.category === cat.key).length
+        const pct = denom > 0 ? Math.round((count / denom) * 100) : 0
+        return { ...cat, count, pct }
+      })
+      .sort((a, b) => b.count - a.count)
   }, [clothes])
 
   if (loading) {
@@ -347,36 +353,26 @@ const Stats: React.FC = () => {
             </div>
 
             <div style={styles.unusedGrid}>
-              {stats.unused.map((c, idx) => {
-                const days = Math.floor(
-                  (Date.now() - (c.createdAt ?? Date.now())) / (24 * 60 * 60 * 1000),
-                )
-                const months = Math.floor(days / 30)
-                const ageLabel = months >= 1 ? `${months} ay` : `${days}g`
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      setLightboxItems(stats.unused)
-                      setLightboxIndex(idx)
-                    }}
-                    style={styles.unusedCell}
-                  >
-                    <SmartImage
-                      cacheKey={c.id}
-                      src={clothingItemImageSrc(c)}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                    <Tag color="warning" style={styles.daysTag}>
-                      {ageLabel}
-                    </Tag>
-                    {(c.label || c.description) && (
-                      <span style={styles.unusedLabel}>{c.label || c.description}</span>
-                    )}
-                  </button>
-                )
-              })}
+              {stats.unused.map((c, idx) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setLightboxItems(stats.unused)
+                    setLightboxIndex(idx)
+                  }}
+                  style={styles.unusedCell}
+                >
+                  <SmartImage
+                    cacheKey={c.id}
+                    src={clothingItemImageSrc(c)}
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  {(c.label || c.description) && (
+                    <span style={styles.unusedLabel}>{c.label || c.description}</span>
+                  )}
+                </button>
+              ))}
             </div>
 
             <Button
@@ -534,16 +530,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     cursor: 'pointer',
     background: COLORS.bgCard,
-  },
-  daysTag: {
-    position: 'absolute' as const,
-    top: 4,
-    left: 4,
-    fontSize: 10,
-    margin: 0,
-    padding: '1px 6px',
-    zIndex: 1,
-    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
   },
   unusedLabel: {
     position: 'absolute' as const,

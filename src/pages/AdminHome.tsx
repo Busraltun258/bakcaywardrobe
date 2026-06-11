@@ -35,7 +35,6 @@ import {
   getDocs,
   onSnapshot,
   query,
-  updateDoc,
   where,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useState } from 'react'
@@ -48,7 +47,7 @@ import { db } from '../firebase'
 import { COLORS } from '../theme'
 import { ClothingItem, OutfitMessage, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
-import { appendMessage, buildThread } from '../utils/outfitMessages'
+import { buildThread, sendMessageToSuggestion } from '../utils/outfitMessages'
 
 const AdminHome: React.FC = () => {
   const { user } = useAuth()
@@ -615,10 +614,7 @@ const SuggestionThread: React.FC<{
     setSending(true)
     try {
       const msg: OutfitMessage = { role: 'advisor', uid: advisorUid, text, at: Date.now() }
-      await updateDoc(doc(db, 'outfitSuggestions', s.id), {
-        messages: appendMessage(s, msg),
-        advisorNote: text,
-      })
+      await sendMessageToSuggestion(s.id, msg, { advisorNote: text })
       setReply('')
       message.success('Yanıtın gönderildi 💌')
     } catch {

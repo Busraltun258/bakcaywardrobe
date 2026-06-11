@@ -24,14 +24,13 @@ export function getWornDate(
 
 /**
  * Kombin giyildi mi?
- * Giyilme gününün ERTESİ GÜNÜ, Türkiye saatiyle 06:00'ı geçildiyse "giyildi" sayılır.
- * Örn: 9 Haziran kombini → 10 Haziran TR saati 06:00'a kadar "planlandı/yaklaşan",
- * 10 Haziran 06:00 (TR) sonrası "giyildi".
+ * Giyilme GÜNÜ, Türkiye saatiyle 06:00'ı geçildiyse "giyildi" sayılır.
+ * Örn: 9 Haziran kombini → 9 Haziran TR saati 06:00'a kadar "planlandı/yaklaşan",
+ * 9 Haziran 06:00 (TR) sonrası "giyildi/geçmiş".
  */
 export function isWorn(date: string): boolean {
   const cutoff = dayjs
     .tz(date, TR_TZ)
-    .add(1, 'day')
     .hour(6)
     .minute(0)
     .second(0)
