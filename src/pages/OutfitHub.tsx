@@ -5,6 +5,7 @@ import {
   ClockCircleOutlined,
   CommentOutlined,
   DeleteOutlined,
+  EditOutlined,
   EnvironmentOutlined,
   HeartFilled,
   HistoryOutlined,
@@ -137,6 +138,7 @@ const OutfitHub: React.FC = () => {
     searchParams.get('tab') === 'history' ? 'history' : 'new',
   )
   const [historySearch, setHistorySearch] = useState('')
+  const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
@@ -723,6 +725,7 @@ const OutfitHub: React.FC = () => {
               isAdmin={isAdmin}
               allClothes={allClothes}
               onPreview={openSlideshow}
+              onEditRequest={() => setEditingReq(r)}
               onDeleteSuggestion={(s) => {
                 modal.confirm({
                   title: 'Öneriyi sil?',
@@ -830,6 +833,14 @@ const OutfitHub: React.FC = () => {
           setLocationOpen(false)
         }}
       />
+
+      <EditRequestModal
+        request={editingReq}
+        canEditType={
+          !!editingReq && suggestions.filter((s) => s.requestId === editingReq.id).length === 0
+        }
+        onClose={() => setEditingReq(null)}
+      />
     </AppLayout>
   )
 }
@@ -840,6 +851,7 @@ interface RequestThreadProps {
   profileName: (uid: string) => string
   isAdmin: boolean
   onDeleteSuggestion: (s: OutfitSuggestion) => void
+  onEditRequest: () => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
   allClothes: Record<string, ClothingItem>
 }
@@ -850,6 +862,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
   profileName,
   isAdmin,
   onDeleteSuggestion,
+  onEditRequest,
   onPreview,
   allClothes,
 }) => {
@@ -869,6 +882,14 @@ const RequestThread: React.FC<RequestThreadProps> = ({
         <Tag color={request.status === 'pending' ? 'warning' : 'success'}>
           {request.status === 'pending' ? 'Bekliyor' : 'Yanıtlandı'}
         </Tag>
+        <Button
+          type="text"
+          size="small"
+          icon={<EditOutlined />}
+          onClick={onEditRequest}
+          style={{ color: COLORS.textSecondary }}
+          title="Talebi düzenle"
+        />
       </div>
 
       {/* İki tarih bir arada, etiketli */}
@@ -1347,6 +1368,130 @@ const LocationPicker: React.FC<{
             style={{ width: '100%' }}
           />
         )}
+      </div>
+    </Modal>
+  )
+}
+
+/** Talebi düzenleme modalı — talebi oluşturan kullanıcı not/tarih/türünü düzeltebilir. */
+const EditRequestModal: React.FC<{
+  request: OutfitRequest | null
+  canEditType: boolean
+  onClose: () => void
+}> = ({ request, canEditType, onClose }) => {
+  const { message } = App.useApp()
+  const [note, setNote] = useState('')
+  const [type, setType] = useState<RequestType>('single')
+  const [date, setDate] = useState<Dayjs>(() => dayjs())
+  const [weekStart, setWeekStart] = useState<Dayjs>(() => dayjs().startOf('week').add(1, 'day'))
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!request) return
+    setNote(request.note ?? '')
+    setType(request.requestType ?? 'single')
+    setDate(request.requestDate ? dayjs(request.requestDate) : dayjs())
+    setWeekStart(
+      request.weekStartDate ? dayjs(request.weekStartDate) : dayjs().startOf('week').add(1, 'day'),
+    )
+  }, [request])
+
+  const save = async () => {
+    if (!request) return
+    setSaving(true)
+    try {
+      const patch: {
+        note: string
+        requestType: RequestType
+        requestDate?: string
+        weekStartDate?: string
+      } = {
+        note: note.trim(),
+        requestType: type,
+      }
+      if (type === 'single') {
+        patch.requestDate = date.format('YYYY-MM-DD')
+      } else {
+        patch.weekStartDate = weekStart.format('YYYY-MM-DD')
+      }
+      await updateDoc(doc(db, 'outfitRequests', request.id), patch)
+      message.success('Talep güncellendi')
+      onClose()
+    } catch (e) {
+      console.error(e)
+      message.error('Güncellenemedi')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={!!request}
+      title="Talebi Düzenle"
+      centered
+      onCancel={onClose}
+      onOk={save}
+      okText="Kaydet"
+      cancelText="Vazgeç"
+      okButtonProps={{ loading: saving }}
+    >
+      <p style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 0 }}>
+        Yanlış mı istedin? Notunu, tarihini ya da türünü buradan düzeltebilirsin.
+      </p>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={styles.label}>Tür</label>
+        <Segmented
+          value={type}
+          onChange={(v) => setType(v as RequestType)}
+          block
+          disabled={!canEditType}
+          options={[
+            { label: 'Tek Gün', value: 'single' },
+            { label: 'Haftalık (5 Gün)', value: 'weekly' },
+          ]}
+        />
+        {!canEditType && (
+          <p style={{ fontSize: 11, color: COLORS.textMuted, margin: '4px 0 0' }}>
+            Öneri hazırlandığı için tür değiştirilemez — not ve tarihi düzenleyebilirsin.
+          </p>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <label style={styles.label}>
+          <CalendarOutlined style={{ marginRight: 6 }} />
+          {type === 'weekly' ? 'Hafta başlangıcı (Pzt)' : 'Kombin tarihi'}
+        </label>
+        {type === 'weekly' ? (
+          <DatePicker
+            value={weekStart}
+            onChange={(d) => d && setWeekStart(d)}
+            format="DD MMM YYYY"
+            allowClear={false}
+            picker="week"
+            style={{ width: '100%' }}
+          />
+        ) : (
+          <DatePicker
+            value={date}
+            onChange={(d) => d && setDate(d)}
+            format="DD MMM YYYY"
+            allowClear={false}
+            style={{ width: '100%' }}
+          />
+        )}
+      </div>
+
+      <div>
+        <label style={styles.label}>Not</label>
+        <Input.TextArea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          placeholder="Kısa not (örn: yarın akşam davet)"
+        />
       </div>
     </Modal>
   )
