@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import BirthdaySurprise from './components/BirthdaySurprise'
 import RequireAdmin from './components/RequireAdmin'
 import RequireAuth from './components/RequireAuth'
 import { useAuth } from './context/AuthContext'
@@ -23,6 +24,8 @@ function AppRoutes() {
   useNotifications()
 
   return (
+    <>
+    <BirthdaySurprise />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
@@ -142,6 +145,7 @@ function AppRoutes() {
 
       <Route path="*" element={<SmartRedirect />} />
     </Routes>
+    </>
   )
 }
 

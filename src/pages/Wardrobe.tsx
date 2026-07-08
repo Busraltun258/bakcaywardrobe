@@ -9,6 +9,11 @@ import {
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import {
+  isBirthdayPreview,
+  isBirthdayToday,
+  openBirthdaySurprise,
+} from '../components/BirthdaySurprise'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
@@ -90,6 +95,9 @@ const Wardrobe: React.FC = () => {
     })
   }
 
+  // Doğum günü butonu sadece 9 Temmuz'da (veya ?bday önizlemesinde) görünür
+  const showBirthdayButton = isBirthdayToday() || isBirthdayPreview()
+
 
   return (
     <AppLayout>
@@ -107,6 +115,19 @@ const Wardrobe: React.FC = () => {
             <span style={styles.heroStatSuffix}>parça</span>
           </div>
         </section>
+
+        {/* Doğum günü sürprizi — sadece 9 Temmuz'da görünür, tekrar izlemek için */}
+        {showBirthdayButton && (
+          <button
+            type="button"
+            onClick={openBirthdaySurprise}
+            style={styles.birthdayBtn}
+          >
+            <span style={{ fontSize: 18 }}>🎂</span>
+            <span className="bk-bday-title-shine">Sürprizini izle</span>
+            <span style={{ fontSize: 18 }}>✨</span>
+          </button>
+        )}
 
         {/* Sezon filtresi — birden fazla seçilebilir, login/logout'ta korunur */}
         <div style={styles.seasonRow}>
@@ -202,6 +223,23 @@ const styles: Record<string, React.CSSProperties> = {
     color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: 500,
+  },
+  birthdayBtn: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '12px 16px',
+    marginBottom: 16,
+    borderRadius: 14,
+    border: '1px solid rgba(192,132,252,0.35)',
+    background: 'linear-gradient(135deg, rgba(124,140,255,0.14), rgba(192,132,252,0.14))',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    boxShadow: '0 6px 20px rgba(124,140,255,0.18)',
   },
   seasonRow: {
     display: 'flex',

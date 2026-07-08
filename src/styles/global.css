@@ -282,3 +282,99 @@ button, .ant-btn, .ant-segmented-item, .ant-tabs-tab {
     bottom: 70px;
   }
 }
+
+/* ============================================================
+   🎂 Doğum günü slayt gösterisi (BirthdaySurprise)
+   ============================================================ */
+.bk-bday-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(192, 132, 252, 0.18), transparent 60%),
+    radial-gradient(120% 80% at 50% 100%, rgba(124, 140, 255, 0.16), transparent 60%),
+    linear-gradient(160deg, #0a0a10 0%, #14101f 55%, #0a0a10 100%);
+  animation: bk-bday-fade 0.6s ease both;
+}
+@keyframes bk-bday-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Yüzen ışık kürecikleri (bokeh) */
+.bk-bday-bokeh {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.5;
+  pointer-events: none;
+  animation: bk-bday-float linear infinite;
+}
+@keyframes bk-bday-float {
+  0% { transform: translateY(20px) translateX(0) scale(1); opacity: 0; }
+  15% { opacity: 0.55; }
+  85% { opacity: 0.45; }
+  100% { transform: translateY(-110vh) translateX(24px) scale(1.15); opacity: 0; }
+}
+
+/* Düşen konfeti */
+.bk-bday-confetti {
+  position: absolute;
+  top: -20px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  pointer-events: none;
+  animation: bk-bday-confetti-fall linear infinite;
+}
+@keyframes bk-bday-confetti-fall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.9; }
+}
+
+/* Kartın akarak girişi */
+.bk-bday-card {
+  animation: bk-bday-card-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes bk-bday-card-in {
+  from { opacity: 0; transform: translateY(36px) scale(0.94); filter: blur(6px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.bk-bday-fadeup {
+  animation: bk-bday-fadeup 0.9s ease both;
+}
+@keyframes bk-bday-fadeup {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* İlerleme çubuğu */
+.bk-bday-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c8cff, #c084fc);
+  border-radius: 999px;
+  animation: bk-bday-progress linear forwards;
+}
+@keyframes bk-bday-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes bk-bday-shine {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.bk-bday-title-shine {
+  background: linear-gradient(90deg, #f5f5f7 0%, #c084fc 30%, #7c8cff 50%, #c084fc 70%, #f5f5f7 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: bk-bday-shine 4s linear infinite;
+}
