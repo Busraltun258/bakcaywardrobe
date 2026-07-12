@@ -36,7 +36,7 @@ import { getCurrentSeasons, getItemSeasons, isOutOfSeason } from '../utils/seaso
  * - En sık önerilen parçalar
  */
 const Stats: React.FC = () => {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [clothes, setClothes] = useState<ClothingItem[]>([])
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
@@ -171,7 +171,7 @@ const Stats: React.FC = () => {
         <Button
           type="text"
           icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/wardrobe')}
+          onClick={() => navigate(isAdmin ? '/home' : '/wardrobe')}
           style={{ color: COLORS.textSecondary, marginBottom: 8 }}
         >
           Geri
@@ -188,7 +188,13 @@ const Stats: React.FC = () => {
         {/* Performans özet */}
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
           <Col xs={12} sm={6}>
-            <StatCard icon={<SkinOutlined />} value={clothes.length} title="Parça" color={COLORS.primary} />
+            <StatCard
+              icon={<SkinOutlined />}
+              value={clothes.length}
+              title="Parça"
+              color={COLORS.primary}
+              onClick={() => navigate('/wardrobe')}
+            />
           </Col>
           <Col xs={12} sm={6}>
             <StatCard
@@ -196,6 +202,7 @@ const Stats: React.FC = () => {
               value={stats.total}
               title="Toplam öneri"
               color={COLORS.accent}
+              onClick={() => navigate('/kombin?tab=history')}
             />
           </Col>
           <Col xs={12} sm={6}>
@@ -204,6 +211,7 @@ const Stats: React.FC = () => {
               value={stats.favorites}
               title="Favoriler (5⭐)"
               color={COLORS.success}
+              onClick={() => navigate('/favorites')}
             />
           </Col>
           <Col xs={12} sm={6}>
@@ -212,6 +220,7 @@ const Stats: React.FC = () => {
               value={stats.disliked}
               title="Değişiklik"
               color={COLORS.warning}
+              onClick={() => navigate('/kombin?tab=history')}
             />
           </Col>
         </Row>
@@ -429,8 +438,14 @@ const StatCard: React.FC<{
   value: number
   title: string
   color: string
-}> = ({ icon, value, title, color }) => (
-  <Card style={{ height: '100%' }} bodyStyle={{ padding: 14 }}>
+  onClick?: () => void
+}> = ({ icon, value, title, color, onClick }) => (
+  <Card
+    style={{ height: '100%', cursor: onClick ? 'pointer' : 'default' }}
+    bodyStyle={{ padding: 14 }}
+    hoverable={!!onClick}
+    onClick={onClick}
+  >
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div
         style={{

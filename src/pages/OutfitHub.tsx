@@ -134,8 +134,10 @@ const OutfitHub: React.FC = () => {
   const [lightboxSlides, setLightboxSlides] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [searchParams] = useSearchParams()
+  // Varsayılan: "Önceki Kombinler". Sadece ?tab=new ile "Yeni Kombin" açılır.
+  // Bildirim linki /kombin?tab=history olduğundan o da burada history'ye düşer.
   const [activeTab, setActiveTab] = useState<'new' | 'history'>(
-    searchParams.get('tab') === 'history' ? 'history' : 'new',
+    searchParams.get('tab') === 'new' ? 'new' : 'history',
   )
   const [historySearch, setHistorySearch] = useState('')
   const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)

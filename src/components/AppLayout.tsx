@@ -59,6 +59,7 @@ const AppLayout: React.FC<Props> = ({ children }) => {
         { key: '/home', label: 'Panel', icon: <DashboardOutlined />, badge },
         { key: '/admin/kullanicilar', label: 'Kullanıcılar', icon: <TeamOutlined /> },
         { key: '/admin/taslaklar', label: 'Taslaklar', icon: <FolderOpenOutlined /> },
+        { key: '/stats', label: 'İstatistik', icon: <BarChartOutlined /> },
       ]
     : [
         { key: '/wardrobe', label: 'Dolabım', icon: <SkinOutlined /> },
