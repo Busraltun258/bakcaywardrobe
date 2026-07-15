@@ -44,7 +44,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import Lightbox from '../components/Lightbox'
@@ -134,11 +134,16 @@ const OutfitHub: React.FC = () => {
   const [lightboxSlides, setLightboxSlides] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [searchParams] = useSearchParams()
-  // Varsayılan: "Önceki Kombinler". Sadece ?tab=new ile "Yeni Kombin" açılır.
-  // Bildirim linki /kombin?tab=history olduğundan o da burada history'ye düşer.
+  // Sekme seçimi:
+  //  - URL'de ?tab=history/new varsa (örn. bildirim linki) ona uyulur.
+  //  - Yoksa: değerlendirilmemiş (yıldız verilmemiş) öneri varsa "Önceki Kombinler",
+  //    yoksa "Yeni Kombin". Karar, öneriler yüklendikten sonra bir kez verilir.
+  const explicitTab = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<'new' | 'history'>(
-    searchParams.get('tab') === 'new' ? 'new' : 'history',
+    explicitTab === 'history' ? 'history' : 'new',
   )
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
+  const autoTabDone = useRef(false)
   const [historySearch, setHistorySearch] = useState('')
   const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)
 
@@ -225,8 +230,22 @@ const OutfitHub: React.FC = () => {
     const q = query(collection(db, 'outfitSuggestions'), where('requesterUid', '==', user.uid))
     return onSnapshot(q, (snap) => {
       setSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion)))
+      setSuggestionsLoaded(true)
     })
   }, [user])
+
+  // Bildirimsiz (URL'de tab yok) girişte varsayılan sekmeyi bir kez belirle:
+  // değerlendirilmemiş öneri varsa "Önceki Kombinler", yoksa "Yeni Kombin".
+  useEffect(() => {
+    if (autoTabDone.current) return
+    if (explicitTab) {
+      autoTabDone.current = true
+      return
+    }
+    if (!suggestionsLoaded) return
+    autoTabDone.current = true
+    setActiveTab(unreadCount > 0 ? 'history' : 'new')
+  }, [explicitTab, suggestionsLoaded, unreadCount])
 
   // Dolabı sayfa açılınca BİR KEZ yükle — her SuggestionCard'ın ayrı sorgu atmasını
   // engeller. Dolabım sayfasının cache'ini de paylaşırız → cold start anında render.
