@@ -1344,6 +1344,7 @@ const LocationPicker: React.FC<{
           placeholder="İl seç"
           showSearch
           style={{ width: '100%' }}
+          getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           options={orderedCities.map((c) => ({ value: c.name, label: c.name }))}
           filterOption={(input, option) =>
             (option?.label as string).toLowerCase().includes(input.toLowerCase())
@@ -1360,6 +1361,7 @@ const LocationPicker: React.FC<{
           allowClear
           disabled={!city}
           style={{ width: '100%' }}
+          getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           options={districts.map((d) => ({ value: d, label: d }))}
           filterOption={(input, option) =>
             (option?.label as string).toLowerCase().includes(input.toLowerCase())
@@ -1379,6 +1381,7 @@ const LocationPicker: React.FC<{
             allowClear={false}
             picker="week"
             style={{ width: '100%' }}
+            getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           />
         ) : (
           <DatePicker
@@ -1387,6 +1390,7 @@ const LocationPicker: React.FC<{
             format="DD MMM YYYY"
             allowClear={false}
             style={{ width: '100%' }}
+            getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           />
         )}
       </div>
@@ -1493,6 +1497,7 @@ const EditRequestModal: React.FC<{
             allowClear={false}
             picker="week"
             style={{ width: '100%' }}
+            getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           />
         ) : (
           <DatePicker
@@ -1501,6 +1506,7 @@ const EditRequestModal: React.FC<{
             format="DD MMM YYYY"
             allowClear={false}
             style={{ width: '100%' }}
+            getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
           />
         )}
       </div>
