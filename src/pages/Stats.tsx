@@ -13,6 +13,7 @@ import { Button, Card, Col, Empty, Progress, Row, Skeleton, Statistic, Tag } fro
 import Lightbox from '../components/Lightbox'
 import {
   collection,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -24,7 +25,7 @@ import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { CATEGORIES, ClothingItem, OutfitSuggestion, SEASONS } from '../types'
+import { CATEGORIES, ClothingItem, OutfitSuggestion, SEASONS, UserProfile } from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { getCurrentSeasons, getItemSeasons, isOutOfSeason } from '../utils/seasonFilter'
 
@@ -43,23 +44,56 @@ const Stats: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [lightboxItems, setLightboxItems] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  // İstatistiklerin hangi kullanıcıya ait olduğu:
+  //  - Kamuran (admin değil) → kendi verisi
+  //  - Büşra (admin) → Kamuran'ın (admin olmayan kullanıcının) verisi
+  const [targetUid, setTargetUid] = useState<string | null>(null)
+  const [targetName, setTargetName] = useState<string>('')
 
   useEffect(() => {
     if (!user) return
-    const q = query(collection(db, 'clothes'), where('ownerId', '==', user.uid))
+    if (!isAdmin) {
+      setTargetUid(user.uid)
+      setTargetName('')
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const snap = await getDocs(collection(db, 'profiles'))
+      const profiles = snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserProfile))
+      const target =
+        profiles.find((p) => p.id !== user.uid && p.isAdmin !== true) ??
+        profiles.find((p) => p.id !== user.uid)
+      if (cancelled) return
+      if (target) {
+        setTargetUid(target.id)
+        setTargetName(target.displayName ?? target.username ?? '')
+      } else {
+        setTargetUid(null)
+        setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, isAdmin])
+
+  useEffect(() => {
+    if (!targetUid) return
+    const q = query(collection(db, 'clothes'), where('ownerId', '==', targetUid))
     return onSnapshot(q, (snap) => {
       setClothes(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ClothingItem[])
       setLoading(false)
     })
-  }, [user])
+  }, [targetUid])
 
   useEffect(() => {
-    if (!user) return
-    const q = query(collection(db, 'outfitSuggestions'), where('requesterUid', '==', user.uid))
+    if (!targetUid) return
+    const q = query(collection(db, 'outfitSuggestions'), where('requesterUid', '==', targetUid))
     return onSnapshot(q, (snap) => {
       setSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OutfitSuggestion)))
     })
-  }, [user])
+  }, [targetUid])
 
   const stats = useMemo(() => {
     const total = suggestions.length
@@ -88,16 +122,6 @@ const Stats: React.FC = () => {
       })
     })
 
-    // Beğenilen önerilerde geçen parçalar
-    const likedUsage = new Map<string, number>()
-    suggestions
-      .filter((s) => s.liked === 'yes')
-      .forEach((s) => {
-        s.clothingItemIds.forEach((id) => {
-          likedUsage.set(id, (likedUsage.get(id) ?? 0) + 1)
-        })
-      })
-
     const usedIds = new Set(usage.keys())
     // Unutulmuş: dolapta en az 45 gündür olan + hiç öneride görmemiş + ŞU AN SEZONUNDA OLAN.
     // Yaz ayında kışlık parça flag'lenmez (zaten giyemez).
@@ -122,12 +146,6 @@ const Stats: React.FC = () => {
       unusedByCategory[c.category] = (unusedByCategory[c.category] ?? 0) + 1
     })
 
-    const mostLoved = clothes
-      .map((c) => ({ c, count: likedUsage.get(c.id) ?? 0 }))
-      .filter((x) => x.count > 0)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6)
-
     return {
       total,
       liked,
@@ -137,7 +155,6 @@ const Stats: React.FC = () => {
       avgRating,
       ratingPercent,
       ratedCount,
-      mostLoved,
       unused: unusedSorted,
       unusedByCategory,
     }
@@ -182,7 +199,11 @@ const Stats: React.FC = () => {
             <PieChartOutlined style={{ color: COLORS.primary, marginRight: 10 }} />
             İstatistikler
           </h1>
-          <p style={styles.heroSub}>Dolabını ve stil performansını incele</p>
+          <p style={styles.heroSub}>
+            {isAdmin
+              ? `${targetName || 'Kullanıcı'} için dolap ve stil performansı`
+              : 'Dolabını ve stil performansını incele'}
+          </p>
         </div>
 
         {/* Performans özet */}
@@ -289,42 +310,6 @@ const Stats: React.FC = () => {
               ))
           )}
         </Card>
-
-        {/* En çok sevilen parçalar */}
-        {stats.mostLoved.length > 0 && (
-          <Card
-            title={
-              <span style={{ fontSize: 15, fontWeight: 600 }}>
-                <HeartFilled style={{ color: COLORS.error, marginRight: 8 }} />
-                En Çok Beğendiğin Parçalar
-              </span>
-            }
-            style={{ marginBottom: 16 }}
-          >
-            <p style={{ fontSize: 12, color: COLORS.textMuted, margin: '0 0 12px' }}>
-              Beğendiğin önerilerde en sık geçen parçalar
-            </p>
-            <div style={styles.thumbsRow}>
-              {stats.mostLoved.map(({ c, count }) => (
-                <div key={c.id} style={styles.thumbCol}>
-                  <div style={{ position: 'relative' }}>
-                    <SmartImage
-                      cacheKey={c.id}
-                      src={clothingItemImageSrc(c)}
-                      style={{ width: 80, height: 80, borderRadius: 12 }}
-                    />
-                    <Tag color="success" style={styles.countTag}>
-                      ×{count}
-                    </Tag>
-                  </div>
-                  {(c.label || c.description) && (
-                    <span style={styles.thumbLabel}>{c.label || c.description}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
 
         {/* Hiç önerilmemiş parçalar */}
         {stats.unused.length > 0 ? (
