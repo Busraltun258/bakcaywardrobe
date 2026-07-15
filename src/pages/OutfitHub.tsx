@@ -484,14 +484,14 @@ const OutfitHub: React.FC = () => {
       onClick={() => setLocationOpen(true)}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <span style={{ fontSize: 38 }}>{weather?.icon ?? '📍'}</span>
+        <span style={{ fontSize: 30 }}>{weather?.icon ?? '📍'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {weather ? (
-            <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.text }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.text }}>
               {weather.temp}°C · {weather.description}
             </div>
           ) : (
-            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
               Hava durumu yükleniyor…
             </div>
           )}
