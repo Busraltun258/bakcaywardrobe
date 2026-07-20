@@ -263,6 +263,12 @@ button, .ant-btn, .ant-segmented-item, .ant-tabs-tab {
   justify-content: space-around;
   align-items: center;
   z-index: 100;
+  /* iOS: fixed + backdrop-filter kaydırmada zıplıyor. Kendi GPU katmanına
+     sabitleyince (translateZ) alta yapışık kalıyor, ortaya kaymıyor. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  contain: layout paint;
 }
 
 /* Sticky submit bar — sayfa sonunda viewport'a yapışır, içerikle çakışmaz */
