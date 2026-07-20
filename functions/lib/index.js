@@ -123,17 +123,18 @@ async function sendToUser(uid, payload) {
  * Yeni kombin önerisi oluştuğunda isteği gönderen kullanıcının TÜM cihazlarına bildirim at.
  */
 exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid}', async (event) => {
-    var _a, _b;
+    var _a, _b, _c;
     const oneri = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
     if (!(oneri === null || oneri === void 0 ? void 0 : oneri.requesterUid))
         return;
     const isWeekly = typeof oneri.dayIndex === 'number';
     const dayLabels = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'];
+    const stilist = await getName((_b = oneri.advisorUid) !== null && _b !== void 0 ? _b : '');
     await sendToUser(oneri.requesterUid, {
         title: isWeekly
-            ? `👗 ${(_b = dayLabels[oneri.dayIndex]) !== null && _b !== void 0 ? _b : 'Bugün'} için kombin hazır!`
-            : '👗 Yeni Kombin Önerisi!',
-        body: 'Stilistin sana bir kombin hazırladı. Hemen bak!',
+            ? `👗 ${(_c = dayLabels[oneri.dayIndex]) !== null && _c !== void 0 ? _c : 'Bugün'} için kombinin hazır 💛`
+            : '👗 Sana özel bir kombin hazır 💛',
+        body: `${stilist} senin için seçti, hadi bak ✨`,
         link: '/kombin?tab=history',
     });
 });
@@ -141,16 +142,19 @@ exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid
  * Yeni talep oluştuğunda stilistin TÜM cihazlarına bildirim at.
  */
 exports.onYeniTalep = (0, firestore_1.onDocumentCreated)('outfitRequests/{rid}', async (event) => {
-    var _a;
+    var _a, _b;
     const talep = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
     if (!(talep === null || talep === void 0 ? void 0 : talep.toUid))
         return;
     const isWeekly = talep.requestType === 'weekly';
+    const kisi = await getName((_b = talep.fromUid) !== null && _b !== void 0 ? _b : '');
     await sendToUser(talep.toUid, {
-        title: isWeekly ? '📅 Haftalık Kombin Talebi' : '📬 Yeni Kombin Talebi',
+        title: isWeekly
+            ? `📅 ${kisi} haftalık kombin istedi`
+            : `💌 ${kisi} senden kombin istedi`,
         body: talep.note
-            ? `Not: ${String(talep.note).slice(0, 80)}`
-            : 'Yeni bir kullanıcı talebi geldi.',
+            ? `"${String(talep.note).slice(0, 80)}"`
+            : 'Senin önerini bekliyor 🥰',
         link: '/home',
     });
 });
@@ -166,7 +170,7 @@ exports.onYeniTalep = (0, firestore_1.onDocumentCreated)('outfitRequests/{rid}',
  * bilinçli olarak bildirim üretmez.
  */
 exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestions/{sid}', async (event) => {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     const before = (_a = event.data) === null || _a === void 0 ? void 0 : _a.before.data();
     const after = (_b = event.data) === null || _b === void 0 ? void 0 : _b.after.data();
     if (!before || !after)
@@ -177,9 +181,10 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
     const editedChanged = !!after.editedAt && ((_c = before.editedAt) !== null && _c !== void 0 ? _c : null) !== ((_d = after.editedAt) !== null && _d !== void 0 ? _d : null);
     if (editedChanged) {
         if (after.requesterUid) {
+            const stilist = await getName((_e = after.advisorUid) !== null && _e !== void 0 ? _e : '');
             await sendToUser(after.requesterUid, {
-                title: '🔄 Kombinin güncellendi',
-                body: 'Stilistin kombinini düzenledi — yeni haline bir bak!',
+                title: '🔄 Kombinin yenilendi 💛',
+                body: `${stilist} dokundu, göz at ✨`,
                 link: '/kombin?tab=history',
             });
         }
@@ -189,21 +194,21 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
     const afterMsgs = Array.isArray(after.messages) ? after.messages.length : 0;
     // 1) Yeni mesaj eklendi mi?
     if (afterMsgs > beforeMsgs) {
-        const last = (_e = after.messages[afterMsgs - 1]) !== null && _e !== void 0 ? _e : {};
-        const text = String((_f = last.text) !== null && _f !== void 0 ? _f : '').slice(0, 90);
+        const last = (_f = after.messages[afterMsgs - 1]) !== null && _f !== void 0 ? _f : {};
+        const text = String((_g = last.text) !== null && _g !== void 0 ? _g : '').slice(0, 90);
         if (last.role === 'user' && after.advisorUid) {
             const name = await getName(last.uid || after.requesterUid || '');
             const isChange = after.liked === 'no';
             await sendToUser(after.advisorUid, {
-                title: isChange ? '🔄 Değişiklik istendi' : '💬 Yeni mesaj',
-                body: text || (isChange ? `${name} bir değişiklik istedi.` : `${name} sana mesaj yazdı.`),
+                title: isChange ? `🔄 ${name} değişiklik istedi` : '💬 Aşkından mesajın var 💌',
+                body: text || (isChange ? 'Bir değişiklik istedi.' : `${name} sana yazdı`),
                 link: '/home',
             });
         }
         else if (last.role === 'advisor' && after.requesterUid) {
             await sendToUser(after.requesterUid, {
-                title: '💬 Stilistinden yanıt',
-                body: text || 'Stilistin sana yanıt yazdı.',
+                title: '💬 Aşkından mesajın var 💌',
+                body: text || 'Sana yanıt yazdı 💌',
                 link: '/kombin?tab=history',
             });
         }
@@ -215,8 +220,8 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
     if (afterRating !== beforeRating && afterRating > 0 && after.advisorUid) {
         const name = await getName(after.requesterUid || '');
         await sendToUser(after.advisorUid, {
-            title: '⭐ Kombin puanlandı',
-            body: `${name} kombine ${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
+            title: `⭐ ${name} kombini puanladı`,
+            body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
             link: '/home',
         });
     }

@@ -102,12 +102,13 @@ export const onYeniOneri = onDocumentCreated('outfitSuggestions/{sid}', async (e
 
   const isWeekly = typeof oneri.dayIndex === 'number'
   const dayLabels = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma']
+  const stilist = await getName(oneri.advisorUid ?? '')
 
   await sendToUser(oneri.requesterUid, {
     title: isWeekly
-      ? `👗 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombin hazır!`
-      : '👗 Yeni Kombin Önerisi!',
-    body: 'Stilistin sana bir kombin hazırladı. Hemen bak!',
+      ? `👗 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombinin hazır 💛`
+      : '👗 Sana özel bir kombin hazır 💛',
+    body: `${stilist} senin için seçti, hadi bak ✨`,
     link: '/kombin?tab=history',
   })
 })
@@ -120,12 +121,15 @@ export const onYeniTalep = onDocumentCreated('outfitRequests/{rid}', async (even
   if (!talep?.toUid) return
 
   const isWeekly = talep.requestType === 'weekly'
+  const kisi = await getName(talep.fromUid ?? '')
 
   await sendToUser(talep.toUid, {
-    title: isWeekly ? '📅 Haftalık Kombin Talebi' : '📬 Yeni Kombin Talebi',
+    title: isWeekly
+      ? `📅 ${kisi} haftalık kombin istedi`
+      : `💌 ${kisi} senden kombin istedi`,
     body: talep.note
-      ? `Not: ${String(talep.note).slice(0, 80)}`
-      : 'Yeni bir kullanıcı talebi geldi.',
+      ? `"${String(talep.note).slice(0, 80)}"`
+      : 'Senin önerini bekliyor 🥰',
     link: '/home',
   })
 })
@@ -153,9 +157,10 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
     !!after.editedAt && (before.editedAt ?? null) !== (after.editedAt ?? null)
   if (editedChanged) {
     if (after.requesterUid) {
+      const stilist = await getName(after.advisorUid ?? '')
       await sendToUser(after.requesterUid, {
-        title: '🔄 Kombinin güncellendi',
-        body: 'Stilistin kombinini düzenledi — yeni haline bir bak!',
+        title: '🔄 Kombinin yenilendi 💛',
+        body: `${stilist} dokundu, göz at ✨`,
         link: '/kombin?tab=history',
       })
     }
@@ -174,14 +179,14 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
       const name = await getName(last.uid || after.requesterUid || '')
       const isChange = after.liked === 'no'
       await sendToUser(after.advisorUid, {
-        title: isChange ? '🔄 Değişiklik istendi' : '💬 Yeni mesaj',
-        body: text || (isChange ? `${name} bir değişiklik istedi.` : `${name} sana mesaj yazdı.`),
+        title: isChange ? `🔄 ${name} değişiklik istedi` : '💬 Aşkından mesajın var 💌',
+        body: text || (isChange ? 'Bir değişiklik istedi.' : `${name} sana yazdı`),
         link: '/home',
       })
     } else if (last.role === 'advisor' && after.requesterUid) {
       await sendToUser(after.requesterUid, {
-        title: '💬 Stilistinden yanıt',
-        body: text || 'Stilistin sana yanıt yazdı.',
+        title: '💬 Aşkından mesajın var 💌',
+        body: text || 'Sana yanıt yazdı 💌',
         link: '/kombin?tab=history',
       })
     }
@@ -194,8 +199,8 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
   if (afterRating !== beforeRating && afterRating > 0 && after.advisorUid) {
     const name = await getName(after.requesterUid || '')
     await sendToUser(after.advisorUid, {
-      title: '⭐ Kombin puanlandı',
-      body: `${name} kombine ${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
+      title: `⭐ ${name} kombini puanladı`,
+      body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
       link: '/home',
     })
   }
