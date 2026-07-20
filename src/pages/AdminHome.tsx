@@ -1,4 +1,6 @@
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   CalendarOutlined,
   CheckCircleFilled,
   ClockCircleOutlined,
@@ -9,6 +11,7 @@ import {
   HeartFilled,
   InboxOutlined,
   RocketOutlined,
+  SearchOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
@@ -61,6 +64,31 @@ const AdminHome: React.FC = () => {
   const [pendingRequests, setPendingRequests] = useState<OutfitRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [lightboxItem, setLightboxItem] = useState<ClothingItem | null>(null)
+  const [suggSearch, setSuggSearch] = useState('')
+  // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
+  const [jumpBackY, setJumpBackY] = useState<number | null>(null)
+
+  // Bir parçanın en son kullanıldığı BAŞKA kombine kaydır + vurgu.
+  const jumpToItemUsage = (itemId: string, fromSuggestionId: string) => {
+    const target = [...suggestions]
+      .filter(
+        (s) => s.id !== fromSuggestionId && (s.clothingItemIds ?? []).includes(itemId),
+      )
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]
+    if (!target) {
+      message.info('Bu parça başka bir kombinde kullanılmamış')
+      return
+    }
+    const el = document.getElementById(`suggestion-${target.id}`)
+    if (!el) {
+      message.info('İlgili kombin bu listede görünmüyor')
+      return
+    }
+    setJumpBackY(window.scrollY)
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('bk-pulse-highlight')
+    setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+  }
 
   useEffect(() => {
     if (!user) return
@@ -152,6 +180,27 @@ const AdminHome: React.FC = () => {
   const rows = useMemo(() => {
     return suggestions.map((s) => ({ s, r: reqCache[s.requestId] }))
   }, [suggestions, reqCache])
+
+  // Önerilerde arama: kullanıcı adı, talep notu, stilist notu/mesajlar, parça etiket/açıklama
+  const filteredRows = useMemo(() => {
+    const term = suggSearch.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter(({ s, r }) => {
+      if (r && profileName(r.fromUid).toLowerCase().includes(term)) return true
+      if (r?.note?.toLowerCase().includes(term)) return true
+      if (s.advisorNote?.toLowerCase().includes(term)) return true
+      if (s.comment?.toLowerCase().includes(term)) return true
+      if (s.messages?.some((m) => m.text?.toLowerCase().includes(term))) return true
+      return (s.clothingItemIds ?? []).some((id) => {
+        const c = clothesCache[id]
+        return (
+          c?.label?.toLowerCase().includes(term) ||
+          c?.description?.toLowerCase().includes(term)
+        )
+      })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, suggSearch, clothesCache, profiles])
 
   const stats = useMemo(() => {
     const total = suggestions.length
@@ -260,13 +309,26 @@ const AdminHome: React.FC = () => {
                 </span>
               ),
               children: (
+                <>
+                {rows.length > 0 && (
+                  <Input
+                    size="middle"
+                    placeholder="Kullanıcı, marka, renk, etiket, not ara…"
+                    prefix={<SearchOutlined style={{ color: COLORS.textMuted }} />}
+                    allowClear
+                    value={suggSearch}
+                    onChange={(e) => setSuggSearch(e.target.value)}
+                    style={{ marginBottom: 12, maxWidth: 420 }}
+                  />
+                )}
                 <SuggestionsList
-                  rows={rows}
+                  rows={filteredRows}
                   clothesCache={clothesCache}
                   profileName={profileName}
                   advisorUid={user?.uid ?? ''}
                   loading={loading}
                   onPreview={(item) => setLightboxItem(item)}
+                  onJumpToItem={jumpToItemUsage}
                   onEdit={(s) => navigate(`/kombin/duzenle/${s.id}`)}
                   onDelete={(s) => {
                     modal.confirm({
@@ -297,11 +359,25 @@ const AdminHome: React.FC = () => {
                     })
                   }}
                 />
+                </>
               ),
             },
           ]}
         />
       </div>
+
+      {jumpBackY !== null && (
+        <button
+          type="button"
+          onClick={() => {
+            window.scrollTo({ top: jumpBackY, behavior: 'smooth' })
+            setJumpBackY(null)
+          }}
+          style={styles.jumpBackBtn}
+        >
+          <ArrowUpOutlined /> Geri dön
+        </button>
+      )}
 
       <Lightbox
         open={!!lightboxItem}
@@ -428,9 +504,10 @@ const SuggestionsList: React.FC<{
   advisorUid: string
   loading: boolean
   onPreview: (item: ClothingItem) => void
+  onJumpToItem: (itemId: string, fromSuggestionId: string) => void
   onEdit: (s: OutfitSuggestion) => void
   onDelete: (s: OutfitSuggestion) => void
-}> = ({ rows, clothesCache, profileName, advisorUid, loading, onPreview, onEdit, onDelete }) => {
+}> = ({ rows, clothesCache, profileName, advisorUid, loading, onPreview, onJumpToItem, onEdit, onDelete }) => {
   if (loading) {
     return (
       <Card>
@@ -443,7 +520,7 @@ const SuggestionsList: React.FC<{
       <Card>
         <Empty
           description={
-            <span style={{ color: COLORS.textSecondary }}>Henüz öneri yapmadın</span>
+            <span style={{ color: COLORS.textSecondary }}>Öneri bulunamadı</span>
           }
         />
       </Card>
@@ -474,7 +551,7 @@ const SuggestionsList: React.FC<{
             </span>
           ) : null
         return (
-          <Col xs={24} md={12} key={s.id} style={{ display: 'flex' }}>
+          <Col xs={24} md={12} key={s.id} id={`suggestion-${s.id}`} style={{ display: 'flex' }}>
             <Card
               style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
               bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
@@ -558,8 +635,9 @@ const SuggestionsList: React.FC<{
                     )
                   }
                   const labelText = c.label || c.description
+                  const showJump = c.category !== 'aksesuar' && c.category !== 'ayakkabi'
                   return (
-                    <div key={id} style={styles.thumbCol}>
+                    <div key={id} style={{ ...styles.thumbCol, position: 'relative' }}>
                       <button
                         type="button"
                         onClick={() => onPreview(c)}
@@ -572,6 +650,20 @@ const SuggestionsList: React.FC<{
                           style={{ width: 72, height: 72, borderRadius: 10 }}
                         />
                       </button>
+                      {showJump && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onJumpToItem(id, s.id)
+                          }}
+                          style={styles.jumpArrow}
+                          title="Bu parçanın en son kullanıldığı kombine git"
+                          aria-label="En son kullanıldığı kombine git"
+                        >
+                          <ArrowDownOutlined style={{ fontSize: 10 }} />
+                        </button>
+                      )}
                       {labelText && <span style={styles.thumbLabel}>{labelText}</span>}
                     </div>
                   )
@@ -791,6 +883,42 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 4,
     maxWidth: 80,
+  },
+  jumpArrow: {
+    position: 'absolute' as const,
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(124,140,255,0.92)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    zIndex: 3,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+  },
+  jumpBackBtn: {
+    position: 'fixed' as const,
+    right: 18,
+    bottom: 'calc(84px + env(safe-area-inset-bottom))',
+    zIndex: 200,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '10px 16px',
+    borderRadius: 999,
+    border: 'none',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: COLORS.gradient,
+    boxShadow: '0 8px 24px rgba(124,140,255,0.45)',
   },
   thumbBtn: {
     padding: 0,

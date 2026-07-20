@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
+import EnableNotifications from './EnableNotifications'
 import KamuranGreeting from './KamuranGreeting'
 
 interface Props {
@@ -127,6 +128,10 @@ const AppLayout: React.FC<Props> = ({ children }) => {
           </nav>
         </div>
       </header>
+
+      <div style={{ padding: '0 16px' }}>
+        <EnableNotifications />
+      </div>
 
       <main className="fade-in">{children}</main>
 

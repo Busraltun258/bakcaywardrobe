@@ -194,6 +194,9 @@ const EditSuggestion: React.FC = () => {
         clothingItemIds: Array.from(selected),
         advisorNote: trimmedNote,
         liked: null,
+        // Kombin değiştiği için eski puan artık geçersiz — sıfırla ki
+        // "4 yıldız ama Bekliyor" gibi tutarsızlık olmasın, kullanıcı yeniden puanlasın.
+        rating: 0,
         comment: '',
         feedbackAt: null,
         editedAt: Date.now(),

@@ -1,4 +1,6 @@
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   CalendarOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
@@ -144,8 +146,12 @@ const OutfitHub: React.FC = () => {
   )
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
   const autoTabDone = useRef(false)
+  // Zaten onarılan öneriler — aynı kaydı tekrar tekrar yazmamak için
+  const healedRef = useRef<Set<string>>(new Set())
   const [historySearch, setHistorySearch] = useState('')
   const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)
+  // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
+  const [jumpBackY, setJumpBackY] = useState<number | null>(null)
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
@@ -233,6 +239,24 @@ const OutfitHub: React.FC = () => {
       setSuggestionsLoaded(true)
     })
   }, [user])
+
+  // Kendini onar: puanı olup 'liked'ı boş kalmış öneriler (örn. eski bir düzenlemeden
+  // kalan tutarsızlık) puana göre otomatik 'liked'a bağlanır — böylece "değerlendirilmemiş"
+  // sayacı gerçeği yansıtır. Yazma sonrası snapshot yeniden gelir, koşul kalkar → döngü yok.
+  useEffect(() => {
+    suggestions.forEach((s) => {
+      const needsHeal =
+        typeof s.rating === 'number' &&
+        s.rating > 0 &&
+        (s.liked === null || s.liked === undefined) &&
+        !healedRef.current.has(s.id)
+      if (!needsHeal) return
+      healedRef.current.add(s.id)
+      updateDoc(doc(db, 'outfitSuggestions', s.id), {
+        liked: (s.rating as number) >= 3 ? 'yes' : 'no',
+      }).catch(() => healedRef.current.delete(s.id))
+    })
+  }, [suggestions])
 
   // Bildirimsiz (URL'de tab yok) girişte varsayılan sekmeyi bir kez belirle:
   // değerlendirilmemiş öneri varsa "Önceki Kombinler", yoksa "Yeni Kombin".
@@ -655,6 +679,29 @@ const OutfitHub: React.FC = () => {
     </>
   )
 
+  // Bir parçanın en son kullanıldığı BAŞKA kombine kaydır + vurgu.
+  // Kaydırmadan önce mevcut konumu sakla ki "Geri dön" ile dönebilsin.
+  const jumpToItemUsage = (itemId: string, fromSuggestionId: string) => {
+    const target = [...suggestions]
+      .filter(
+        (s) => s.id !== fromSuggestionId && (s.clothingItemIds ?? []).includes(itemId),
+      )
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]
+    if (!target) {
+      message.info('Bu parça başka bir kombinde kullanılmamış')
+      return
+    }
+    const el = document.getElementById(`suggestion-${target.id}`)
+    if (!el) {
+      message.info('İlgili kombin bu listede görünmüyor')
+      return
+    }
+    setJumpBackY(window.scrollY)
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('bk-pulse-highlight')
+    setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+  }
+
   // İlk değerlendirilmemiş öneriye scroll et + glow efekti
   const scrollToUnread = () => {
     const firstUnread = suggestions
@@ -746,6 +793,7 @@ const OutfitHub: React.FC = () => {
               isAdmin={isAdmin}
               allClothes={allClothes}
               onPreview={openSlideshow}
+              onJumpToItem={jumpToItemUsage}
               onEditRequest={() => setEditingReq(r)}
               onDeleteSuggestion={(s) => {
                 modal.confirm({
@@ -825,6 +873,19 @@ const OutfitHub: React.FC = () => {
         />
       </div>
 
+      {jumpBackY !== null && (
+        <button
+          type="button"
+          onClick={() => {
+            window.scrollTo({ top: jumpBackY, behavior: 'smooth' })
+            setJumpBackY(null)
+          }}
+          style={styles.jumpBackBtn}
+        >
+          <ArrowUpOutlined /> Geri dön
+        </button>
+      )}
+
       <Lightbox
         open={!!lightboxSlides}
         onClose={() => setLightboxSlides(null)}
@@ -874,6 +935,7 @@ interface RequestThreadProps {
   onDeleteSuggestion: (s: OutfitSuggestion) => void
   onEditRequest: () => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  onJumpToItem: (itemId: string, fromSuggestionId: string) => void
   allClothes: Record<string, ClothingItem>
 }
 
@@ -885,6 +947,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
   onDeleteSuggestion,
   onEditRequest,
   onPreview,
+  onJumpToItem,
   allClothes,
 }) => {
   const isWeekly = request.requestType === 'weekly'
@@ -969,6 +1032,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           allClothes={allClothes}
           onDelete={onDeleteSuggestion}
           onPreview={onPreview}
+          onJumpToItem={onJumpToItem}
         />
       ) : (
         suggestions.map((s) => (
@@ -980,6 +1044,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
             allClothes={allClothes}
             onDelete={() => onDeleteSuggestion(s)}
             onPreview={onPreview}
+            onJumpToItem={onJumpToItem}
           />
         ))
       )}
@@ -994,7 +1059,8 @@ const WeeklyView: React.FC<{
   allClothes: Record<string, ClothingItem>
   onDelete: (s: OutfitSuggestion) => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
-}> = ({ suggestions, profileName, isAdmin, allClothes, onDelete, onPreview }) => {
+  onJumpToItem: (itemId: string, fromSuggestionId: string) => void
+}> = ({ suggestions, profileName, isAdmin, allClothes, onDelete, onPreview, onJumpToItem }) => {
   const byDay = useMemo(() => {
     const map: Record<number, OutfitSuggestion> = {}
     suggestions.forEach((s) => {
@@ -1035,6 +1101,7 @@ const WeeklyView: React.FC<{
                 allClothes={allClothes}
                 onDelete={() => onDelete(s)}
                 onPreview={onPreview}
+                onJumpToItem={onJumpToItem}
                 compact
               />
             ) : (
@@ -1056,6 +1123,7 @@ interface SuggestionCardProps {
   allClothes: Record<string, ClothingItem>
   onDelete: () => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  onJumpToItem?: (itemId: string, fromSuggestionId: string) => void
   compact?: boolean
 }
 
@@ -1066,6 +1134,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   allClothes,
   onDelete,
   onPreview,
+  onJumpToItem,
   compact = false,
 }) => {
   const { message } = App.useApp()
@@ -1177,8 +1246,10 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
           const orderedItems = s.clothingItemIds
             .map((cid) => items[cid])
             .filter(Boolean) as ClothingItem[]
+          const showJump =
+            !!onJumpToItem && !!c && c.category !== 'aksesuar' && c.category !== 'ayakkabi'
           return (
-            <div key={id} style={styles.thumbWrap}>
+            <div key={id} style={{ ...styles.thumbWrap, position: 'relative' }}>
               {c ? (
                 <>
                   <button
@@ -1192,6 +1263,20 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
                       style={{ width: 70, height: 70, borderRadius: 10 }}
                     />
                   </button>
+                  {showJump && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onJumpToItem!(id, s.id)
+                      }}
+                      style={styles.jumpArrow}
+                      title="Bu parçanın en son kullanıldığı kombine git"
+                      aria-label="En son kullanıldığı kombine git"
+                    >
+                      <ArrowDownOutlined style={{ fontSize: 10 }} />
+                    </button>
+                  )}
                   {(c.description || c.label) && (
                     <span style={styles.thumbLabel}>{c.description || c.label}</span>
                   )}
@@ -1620,6 +1705,42 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 4,
     maxWidth: 80,
+  },
+  jumpArrow: {
+    position: 'absolute' as const,
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(124,140,255,0.92)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    zIndex: 3,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+  },
+  jumpBackBtn: {
+    position: 'fixed' as const,
+    right: 18,
+    bottom: 'calc(84px + env(safe-area-inset-bottom))',
+    zIndex: 200,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '10px 16px',
+    borderRadius: 999,
+    border: 'none',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: COLORS.gradient,
+    boxShadow: '0 8px 24px rgba(124,140,255,0.45)',
   },
   thumbLabel: {
     fontSize: 10,

@@ -36,6 +36,14 @@ export function useNotifications() {
       return
     }
 
+    // iOS/Safari izni SADECE kullanıcı dokunuşuyla verilebilir. Bu yüzden mount'ta
+    // otomatik izin İSTEMİYORUZ; sadece izin zaten verilmişse token'ı kurup tazeliyoruz.
+    // İzin yoksa kullanıcı "Bildirimleri Aç" butonuyla enableNotifications() çağıracak.
+    if (Notification.permission !== 'granted') {
+      console.info('[bk-notif] İzin bekleniyor — kullanıcı butonla açacak.')
+      return
+    }
+
     let unsubscribeOnMessage: (() => void) | null = null
 
     setup(user.uid).then((unsub) => {
@@ -46,6 +54,26 @@ export function useNotifications() {
       if (unsubscribeOnMessage) unsubscribeOnMessage()
     }
   }, [user?.uid])
+}
+
+/**
+ * Bildirim iznini KULLANICI DOKUNUŞUYLA ister ve token'ı kaydeder.
+ * iOS'ta izin isteme mutlaka bir tıklama/dokunma içinde yapılmalı — bu fonksiyon
+ * bir buton onClick'inden çağrılır.
+ */
+export async function enableNotifications(
+  uid: string,
+): Promise<'granted' | 'denied' | 'unsupported'> {
+  if (typeof window === 'undefined') return 'unsupported'
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return 'unsupported'
+  // İlk iş: izni iste (senkron gesture bağlamında kalmalı — öncesinde await olmamalı).
+  let permission = Notification.permission
+  if (permission !== 'granted') {
+    permission = await Notification.requestPermission()
+  }
+  if (permission !== 'granted') return 'denied'
+  await setup(uid)
+  return 'granted'
 }
 
 async function setup(uid: string): Promise<(() => void) | null> {
