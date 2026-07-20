@@ -146,6 +146,22 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
   const after = event.data?.after.data()
   if (!before || !after) return
 
+  // 0) Kombin düzenlendi mi? (stilist parçaları/​notu değiştirdi → editedAt güncellenir)
+  //    Kamuran'a "kombinin güncellendi" bildir. Düzenleme diğer alanları da
+  //    değiştirdiği için bunu önce ele alıp çıkıyoruz (çift bildirim olmasın).
+  const editedChanged =
+    !!after.editedAt && (before.editedAt ?? null) !== (after.editedAt ?? null)
+  if (editedChanged) {
+    if (after.requesterUid) {
+      await sendToUser(after.requesterUid, {
+        title: '🔄 Kombinin güncellendi',
+        body: 'Stilistin kombinini düzenledi — yeni haline bir bak!',
+        link: '/kombin?tab=history',
+      })
+    }
+    return
+  }
+
   const beforeMsgs = Array.isArray(before.messages) ? before.messages.length : 0
   const afterMsgs = Array.isArray(after.messages) ? after.messages.length : 0
 

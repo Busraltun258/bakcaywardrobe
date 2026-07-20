@@ -166,17 +166,31 @@ exports.onYeniTalep = (0, firestore_1.onDocumentCreated)('outfitRequests/{rid}',
  * bilinçli olarak bildirim üretmez.
  */
 exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestions/{sid}', async (event) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     const before = (_a = event.data) === null || _a === void 0 ? void 0 : _a.before.data();
     const after = (_b = event.data) === null || _b === void 0 ? void 0 : _b.after.data();
     if (!before || !after)
         return;
+    // 0) Kombin düzenlendi mi? (stilist parçaları/​notu değiştirdi → editedAt güncellenir)
+    //    Kamuran'a "kombinin güncellendi" bildir. Düzenleme diğer alanları da
+    //    değiştirdiği için bunu önce ele alıp çıkıyoruz (çift bildirim olmasın).
+    const editedChanged = !!after.editedAt && ((_c = before.editedAt) !== null && _c !== void 0 ? _c : null) !== ((_d = after.editedAt) !== null && _d !== void 0 ? _d : null);
+    if (editedChanged) {
+        if (after.requesterUid) {
+            await sendToUser(after.requesterUid, {
+                title: '🔄 Kombinin güncellendi',
+                body: 'Stilistin kombinini düzenledi — yeni haline bir bak!',
+                link: '/kombin?tab=history',
+            });
+        }
+        return;
+    }
     const beforeMsgs = Array.isArray(before.messages) ? before.messages.length : 0;
     const afterMsgs = Array.isArray(after.messages) ? after.messages.length : 0;
     // 1) Yeni mesaj eklendi mi?
     if (afterMsgs > beforeMsgs) {
-        const last = (_c = after.messages[afterMsgs - 1]) !== null && _c !== void 0 ? _c : {};
-        const text = String((_d = last.text) !== null && _d !== void 0 ? _d : '').slice(0, 90);
+        const last = (_e = after.messages[afterMsgs - 1]) !== null && _e !== void 0 ? _e : {};
+        const text = String((_f = last.text) !== null && _f !== void 0 ? _f : '').slice(0, 90);
         if (last.role === 'user' && after.advisorUid) {
             const name = await getName(last.uid || after.requesterUid || '');
             const isChange = after.liked === 'no';
