@@ -135,7 +135,7 @@ exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid
             ? `👗 ${(_c = dayLabels[oneri.dayIndex]) !== null && _c !== void 0 ? _c : 'Bugün'} için kombinin hazır 💛`
             : '👗 Sana özel bir kombin hazır 💛',
         body: `${stilist} senin için seçti, hadi bak ✨`,
-        link: '/kombin?tab=history',
+        link: `/kombin?tab=history&focus=${event.params.sid}`,
     });
 });
 /**
@@ -185,7 +185,7 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
             await sendToUser(after.requesterUid, {
                 title: '🔄 Kombinin yenilendi 💛',
                 body: `${stilist} dokundu, göz at ✨`,
-                link: '/kombin?tab=history',
+                link: `/kombin?tab=history&focus=${event.params.sid}`,
             });
         }
         return;
@@ -202,14 +202,14 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
             await sendToUser(after.advisorUid, {
                 title: isChange ? `🔄 ${name} değişiklik istedi` : '💬 Aşkından mesajın var 💌',
                 body: text || (isChange ? 'Bir değişiklik istedi.' : `${name} sana yazdı`),
-                link: '/home',
+                link: `/home?focus=${event.params.sid}`,
             });
         }
         else if (last.role === 'advisor' && after.requesterUid) {
             await sendToUser(after.requesterUid, {
                 title: '💬 Aşkından mesajın var 💌',
                 body: text || 'Sana yanıt yazdı 💌',
-                link: '/kombin?tab=history',
+                link: `/kombin?tab=history&focus=${event.params.sid}`,
             });
         }
         return;
@@ -222,7 +222,7 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
         await sendToUser(after.advisorUid, {
             title: `⭐ ${name} kombini puanladı`,
             body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
-            link: '/home',
+            link: `/home?focus=${event.params.sid}`,
         });
     }
 });

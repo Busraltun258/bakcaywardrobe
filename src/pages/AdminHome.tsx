@@ -235,6 +235,22 @@ const AdminHome: React.FC = () => {
     return { total, liked, favorites, disliked, waiting }
   }, [suggestions])
 
+  // Bildirime tıklayınca gelen kombine kaydır + vurgula (bir kez).
+  useEffect(() => {
+    if (!focusId || focusDone.current || loading) return
+    if (!rows.some((r) => r.s.id === focusId)) return
+    setActiveTab('suggestions')
+    const t = setTimeout(() => {
+      const el = document.getElementById(`suggestion-${focusId}`)
+      if (!el) return
+      focusDone.current = true
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('bk-pulse-highlight')
+      setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+    }, 450)
+    return () => clearTimeout(t)
+  }, [focusId, loading, rows])
+
   return (
     <AppLayout>
       <div className="bk-container-wide">
