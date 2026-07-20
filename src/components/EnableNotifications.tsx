@@ -2,28 +2,27 @@ import { BellOutlined, CloseOutlined } from '@ant-design/icons'
 import { App, Button } from 'antd'
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { enableNotifications } from '../hooks/useNotifications'
+import { enableNotifications, isPushRegistered } from '../hooks/useNotifications'
 import { COLORS } from '../theme'
 
 /**
  * "Bildirimleri Aç" şeridi.
  *
- * iOS'ta push bildirim yalnızca:
- *  - Uygulama ana ekrana eklenmiş (standalone) çalışıyorsa VE
- *  - İzin bir kullanıcı dokunuşuyla verildiyse çalışır.
- * Bu şerit, izin verilene kadar üstte görünür; iOS Safari sekmesindeyse önce
- * "ana ekrana ekle" yönlendirmesi gösterir.
+ * iOS'ta push bildirim yalnızca ana ekrana eklenmiş (standalone) PWA'da ve izin
+ * bir kullanıcı dokunuşuyla verildiğinde çalışır. Ayrıca izin verilmiş olsa bile
+ * token GERÇEKTEN alınmadıysa şerit görünür kalır ("Yeniden bağla") — böylece
+ * "izin var ama token yok" durumu sessizce kaybolmaz.
  */
 const isIOS = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent)
 const isStandalone = () =>
   window.matchMedia?.('(display-mode: standalone)').matches ||
-  // iOS Safari'ye özel bayrak
   (window.navigator as unknown as { standalone?: boolean }).standalone === true
 
 const EnableNotifications: React.FC = () => {
   const { user } = useAuth()
   const { message } = App.useApp()
   const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>('default')
+  const [registered, setRegistered] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dismissed, setDismissed] = useState(false)
 
@@ -34,15 +33,17 @@ const EnableNotifications: React.FC = () => {
       return
     }
     setPerm(Notification.permission)
+    setRegistered(isPushRegistered())
   }, [])
 
   if (!user || dismissed) return null
-  if (perm === 'unsupported' || perm === 'granted' || perm === 'denied') {
-    // granted: gerek yok. denied: tarayıcı ayarından açması gerek, şerit nag yapmasın.
-    return null
-  }
+  if (perm === 'unsupported') return null
+  // İzin verilmiş VE token alınmış → her şey yolunda, gösterme.
+  if (perm === 'granted' && registered) return null
 
   const iosNeedsInstall = isIOS() && !isStandalone()
+  const isBlocked = perm === 'denied'
+  const needsReconnect = perm === 'granted' && !registered
 
   const handleEnable = async () => {
     if (!user) return
@@ -50,13 +51,16 @@ const EnableNotifications: React.FC = () => {
     try {
       const res = await enableNotifications(user.uid)
       setPerm(Notification.permission)
-      if (res === 'granted') {
+      setRegistered(isPushRegistered())
+      if (res.status === 'granted') {
         message.success('Bildirimler açıldı 🔔')
         setDismissed(true)
-      } else if (res === 'denied') {
-        message.warning('İzin verilmedi. Ayarlar’dan bildirimlere izin verebilirsin.')
-      } else {
+      } else if (res.status === 'denied') {
+        message.warning('İzin verilmedi. iPhone Ayarlar → Bildirimler’den açabilirsin.')
+      } else if (res.status === 'unsupported') {
         message.info('Bu cihaz/tarayıcı bildirimleri desteklemiyor.')
+      } else {
+        message.error(`Bildirim bağlanamadı: ${res.message}`)
       }
     } catch (e) {
       console.error(e)
@@ -66,6 +70,14 @@ const EnableNotifications: React.FC = () => {
     }
   }
 
+  const subText = iosNeedsInstall
+    ? 'iPhone’da bildirim için: Safari’de Paylaş → “Ana Ekrana Ekle”, sonra ana ekrandaki Bakçay simgesinden aç.'
+    : isBlocked
+      ? 'Bildirim izni kapalı. iPhone Ayarlar → Bildirimler → Bakçay’dan “İzin Ver” yap.'
+      : needsReconnect
+        ? 'İzin var ama bağlantı tamamlanmamış. Bağlamak için dokun.'
+        : 'Kombin isteği ve öneri geldiğinde telefonuna haber gelsin.'
+
   return (
     <div style={styles.wrap}>
       <div style={styles.iconWrap}>
@@ -73,15 +85,11 @@ const EnableNotifications: React.FC = () => {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={styles.title}>Bildirimleri aç</div>
-        <div style={styles.sub}>
-          {iosNeedsInstall
-            ? 'iPhone’da bildirim için: Safari’de Paylaş → “Ana Ekrana Ekle”, sonra ana ekrandaki Bakçay simgesinden aç.'
-            : 'Kombin isteği ve öneri geldiğinde telefonuna haber gelsin.'}
-        </div>
+        <div style={styles.sub}>{subText}</div>
       </div>
-      {!iosNeedsInstall && (
+      {!iosNeedsInstall && !isBlocked && (
         <Button type="primary" size="small" loading={busy} onClick={handleEnable}>
-          Aç
+          {needsReconnect ? 'Yeniden bağla' : 'Aç'}
         </Button>
       )}
       <button

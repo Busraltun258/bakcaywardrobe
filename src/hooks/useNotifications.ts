@@ -9,94 +9,86 @@ import { db, messagingPromise } from '../firebase'
 const VAPID_KEY =
   'BIb3fkM-0H_rqXG0EvhCxJlyOJqiihq_DOD0zBbZUgwGBkNlnRyjw6uJsyKImO_0H_ZSIJsddZVFgAmS_VPQE-g'
 
-/**
- * Push notification kurulumu.
- *
- * Sorunlar ve çözümleri:
- *  1. Browser bildirim izni daha önce reddedilmişse popup bile gelmiyordu — şimdi
- *     `Notification.permission` kontrol ediliyor ve durum loglanıyor.
- *  2. Service worker registration başarısız olursa sessizce ölüyordu — şimdi
- *     hata loglanıyor ve fallback olarak default SW deneniyor.
- *  3. Token değiştiğinde Firestore'a kaydedilmiyordu — şimdi her zaman
- *     setDoc + merge ile güncelleniyor (updateDoc, profile yoksa hata verirdi).
- *  4. onMessage handler her kullanıcı değişiminde tekrar register oluyordu — şimdi
- *     unsubscribe edip yeniden bağlanıyor.
- */
+// Token gerçekten alınıp profile yazıldığında set edilir. Banner'ın gizlenip
+// gizlenmeyeceğine bu belirler — izin "granted" olsa bile token yoksa banner kalır.
+const PUSH_OK_KEY = 'bk_push_ok'
+
+export type EnableResult =
+  | { status: 'granted' }
+  | { status: 'denied' }
+  | { status: 'unsupported' }
+  | { status: 'error'; message: string }
+
+interface SetupResult {
+  ok: boolean
+  unsub: (() => void) | null
+  error?: string
+}
+
+/** Bu cihazda daha önce token başarıyla alınmış mı? (banner görünürlüğü için) */
+export function isPushRegistered(): boolean {
+  try {
+    return localStorage.getItem(PUSH_OK_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function useNotifications() {
   const { user } = useAuth()
 
   useEffect(() => {
     if (!user) return
     if (typeof window === 'undefined') return
-    if (!('Notification' in window)) {
-      console.info('[bk-notif] Bu tarayıcı bildirimleri desteklemiyor.')
-      return
-    }
-    if (!('serviceWorker' in navigator)) {
-      console.info('[bk-notif] Service worker desteklenmiyor.')
-      return
-    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return
 
-    // iOS/Safari izni SADECE kullanıcı dokunuşuyla verilebilir. Bu yüzden mount'ta
-    // otomatik izin İSTEMİYORUZ; sadece izin zaten verilmişse token'ı kurup tazeliyoruz.
-    // İzin yoksa kullanıcı "Bildirimleri Aç" butonuyla enableNotifications() çağıracak.
-    if (Notification.permission !== 'granted') {
-      console.info('[bk-notif] İzin bekleniyor — kullanıcı butonla açacak.')
-      return
-    }
+    // iOS/Safari izni SADECE kullanıcı dokunuşuyla verilebilir. Mount'ta otomatik izin
+    // İSTEMİYORUZ; sadece izin zaten verilmişse token'ı kurup tazeliyoruz (bu hesap için).
+    if (Notification.permission !== 'granted') return
 
-    let unsubscribeOnMessage: (() => void) | null = null
-
-    setup(user.uid).then((unsub) => {
-      unsubscribeOnMessage = unsub
+    let unsub: (() => void) | null = null
+    setup(user.uid).then((res) => {
+      unsub = res.unsub
     })
-
     return () => {
-      if (unsubscribeOnMessage) unsubscribeOnMessage()
+      if (unsub) unsub()
     }
   }, [user?.uid])
 }
 
 /**
  * Bildirim iznini KULLANICI DOKUNUŞUYLA ister ve token'ı kaydeder.
- * iOS'ta izin isteme mutlaka bir tıklama/dokunma içinde yapılmalı — bu fonksiyon
- * bir buton onClick'inden çağrılır.
+ * iOS'ta izin isteme mutlaka bir tıklama/dokunma içinde yapılmalı.
+ * Token gerçekten alınmazsa 'error' döner (böylece kullanıcıya doğru mesaj gösterilir).
  */
-export async function enableNotifications(
-  uid: string,
-): Promise<'granted' | 'denied' | 'unsupported'> {
-  if (typeof window === 'undefined') return 'unsupported'
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return 'unsupported'
+export async function enableNotifications(uid: string): Promise<EnableResult> {
+  if (typeof window === 'undefined') return { status: 'unsupported' }
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    return { status: 'unsupported' }
+  }
   // İlk iş: izni iste (senkron gesture bağlamında kalmalı — öncesinde await olmamalı).
   let permission = Notification.permission
   if (permission !== 'granted') {
     permission = await Notification.requestPermission()
   }
-  if (permission !== 'granted') return 'denied'
-  await setup(uid)
-  return 'granted'
+  if (permission !== 'granted') return { status: 'denied' }
+
+  const res = await setup(uid)
+  if (res.ok) return { status: 'granted' }
+  return { status: 'error', message: res.error ?? 'Token alınamadı.' }
 }
 
-async function setup(uid: string): Promise<(() => void) | null> {
+async function setup(uid: string): Promise<SetupResult> {
   try {
     const messaging = await messagingPromise
     if (!messaging) {
-      console.info('[bk-notif] Messaging bu ortamda desteklenmiyor.')
-      return null
+      return { ok: false, unsub: null, error: 'Bu ortamda mesajlaşma desteklenmiyor.' }
+    }
+    if (Notification.permission !== 'granted') {
+      return { ok: false, unsub: null, error: 'İzin verilmedi.' }
     }
 
-    // İzin durumunu kontrol et
-    let permission = Notification.permission
-    if (permission === 'default') {
-      permission = await Notification.requestPermission()
-    }
-    if (permission !== 'granted') {
-      console.info('[bk-notif] Bildirim izni reddedildi:', permission)
-      return null
-    }
-
-    // Service worker kaydı - hata olursa logla ama tek try ile dene
-    let swReg: ServiceWorkerRegistration | undefined
+    let swReg: ServiceWorkerRegistration
     try {
       swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
         scope: '/firebase-cloud-messaging-push-scope',
@@ -104,22 +96,28 @@ async function setup(uid: string): Promise<(() => void) | null> {
       await navigator.serviceWorker.ready
     } catch (e) {
       console.error('[bk-notif] Service worker kaydı başarısız:', e)
-      return null
+      return { ok: false, unsub: null, error: 'Service worker kaydedilemedi.' }
     }
 
-    const token = await getToken(messaging, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: swReg,
-    })
-    if (!token) {
-      console.warn('[bk-notif] FCM token alınamadı.')
-      return null
+    let token: string
+    try {
+      token = await getToken(messaging, {
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: swReg,
+      })
+    } catch (e) {
+      console.error('[bk-notif] getToken hatası:', e)
+      return {
+        ok: false,
+        unsub: null,
+        error: (e as Error)?.message ?? 'Token alınamadı.',
+      }
     }
-    console.info('[bk-notif] Token alındı, profile yazılıyor.')
+    if (!token) {
+      return { ok: false, unsub: null, error: 'Token boş döndü.' }
+    }
 
     // Çoklu-cihaz: token'ı array'e ekle (arrayUnion duplicate eklemez).
-    // Geriye dönük uyumluluk için fcmToken alanını da güncelliyoruz — eski
-    // function deploy'ları varsa onlar da çalışsın.
     await setDoc(
       doc(db, 'profiles', uid),
       {
@@ -130,14 +128,13 @@ async function setup(uid: string): Promise<(() => void) | null> {
       { merge: true },
     )
 
-    // localStorage'a son token'ı yaz - aynı token tekrar yazılmasın
     try {
       localStorage.setItem('bk_fcm_token', token)
+      localStorage.setItem(PUSH_OK_KEY, '1')
     } catch {}
 
     // Uygulama açıkken gelen bildirimler için handler
-    const unsubscribe = onMessage(messaging, (payload) => {
-      console.info('[bk-notif] Foreground mesaj:', payload)
+    const unsub = onMessage(messaging, (payload) => {
       const title = payload.notification?.title ?? 'Bakçay'
       const body = payload.notification?.body ?? ''
       try {
@@ -158,9 +155,9 @@ async function setup(uid: string): Promise<(() => void) | null> {
       }
     })
 
-    return unsubscribe
+    return { ok: true, unsub }
   } catch (e) {
     console.error('[bk-notif] Setup hatası:', e)
-    return null
+    return { ok: false, unsub: null, error: (e as Error)?.message ?? 'Kurulum hatası.' }
   }
 }
