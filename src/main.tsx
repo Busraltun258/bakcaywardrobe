@@ -18,7 +18,7 @@ import { darkTheme } from './theme'
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConfigProvider theme={darkTheme} locale={trTR}>
-      <AntApp>
+      <AntApp message={{ top: 70 }}>
         <AuthProvider>
           <App />
         </AuthProvider>

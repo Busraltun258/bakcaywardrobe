@@ -110,9 +110,9 @@ export const onYeniOneri = onDocumentCreated('outfitSuggestions/{sid}', async (e
 
   await sendToUser(oneri.requesterUid, {
     title: isWeekly
-      ? `👗 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombinin hazır 💛`
-      : '👗 Sana özel bir kombin hazır 💛',
-    body: `${stilist} senin için seçti, hadi bak ✨`,
+      ? `👔 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombinin hazır 💛`
+      : '👔 Sana özel bir kombin hazır 💛',
+    body: `${stilist} senin için hazırladı, bak bakalım`,
     link: `/kombin?tab=history&focus=${event.params.sid}`,
   })
 })
@@ -163,8 +163,8 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
     if (after.requesterUid) {
       const stilist = await getName(after.advisorUid ?? '')
       await sendToUser(after.requesterUid, {
-        title: '🔄 Kombinin yenilendi 💛',
-        body: `${stilist} dokundu, göz at ✨`,
+        title: '🔄 Kombinin güncellendi 💛',
+        body: `${stilist} kombinini değiştirdi, göz at`,
         link: `/kombin?tab=history&focus=${event.params.sid}`,
       })
     }
@@ -188,9 +188,10 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
         link: `/home?focus=${event.params.sid}`,
       })
     } else if (last.role === 'advisor' && after.requesterUid) {
+      const stilist = await getName(last.uid || after.advisorUid || '')
       await sendToUser(after.requesterUid, {
-        title: '💬 Aşkından mesajın var 💌',
-        body: text || 'Sana yanıt yazdı 💌',
+        title: '💬 Aşkından mesajın var 💛',
+        body: text || `${stilist} sana yazdı`,
         link: `/kombin?tab=history&focus=${event.params.sid}`,
       })
     }

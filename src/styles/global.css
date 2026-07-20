@@ -384,3 +384,12 @@ button, .ant-btn, .ant-segmented-item, .ant-tabs-tab {
   -webkit-text-fill-color: transparent;
   animation: bk-bday-shine 4s linear infinite;
 }
+
+/* Foreground bildirim şeridi — üstten yumuşak kayarak girer */
+.bk-toast-in {
+  animation: bk-toast-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes bk-toast-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: translateY(0); }
+}

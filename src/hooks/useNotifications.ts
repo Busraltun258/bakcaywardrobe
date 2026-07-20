@@ -135,27 +135,20 @@ async function setup(uid: string): Promise<SetupResult> {
       localStorage.setItem(pushOkKey(uid), '1')
     } catch {}
 
-    // Uygulama açıkken gelen bildirimler için handler — data-only payload'dan okur.
+    // Uygulama AÇIKKEN gelen bildirimler — iOS standalone'da OS banner'ı çentik
+    // altında kaybolabildiği için uygulama içi şerit gösteriyoruz (safe-area'lı).
+    // useNotifications bir hook; UI'ı AppLayout'taki ForegroundNotif dinleyip çiziyor.
     const unsub = onMessage(messaging, (payload) => {
       const d = payload.data ?? {}
-      const title = d.title ?? 'Bakçay'
-      const body = d.body ?? ''
-      const link = d.link ?? payload.fcmOptions?.link
-      try {
-        const notif = new Notification(title, {
-          body,
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          tag: 'bk-notif',
-        })
-        notif.onclick = () => {
-          window.focus()
-          if (link) window.location.href = link
-          notif.close()
-        }
-      } catch (e) {
-        console.error('[bk-notif] Foreground notification gösterilemedi:', e)
-      }
+      window.dispatchEvent(
+        new CustomEvent('bk-foreground-notif', {
+          detail: {
+            title: d.title ?? 'Bakçay',
+            body: d.body ?? '',
+            link: d.link ?? payload.fcmOptions?.link ?? '',
+          },
+        }),
+      )
     })
 
     return { ok: true, unsub }

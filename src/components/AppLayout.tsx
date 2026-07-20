@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
 import EnableNotifications from './EnableNotifications'
+import ForegroundNotif from './ForegroundNotif'
 import KamuranGreeting from './KamuranGreeting'
 
 interface Props {
@@ -82,6 +83,7 @@ const AppLayout: React.FC<Props> = ({ children }) => {
 
   return (
     <div className="bk-page">
+      <ForegroundNotif />
       <header style={styles.topBar}>
         <div style={styles.topBarInner}>
           <div

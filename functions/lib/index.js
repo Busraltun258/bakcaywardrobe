@@ -136,9 +136,9 @@ exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid
     const stilist = await getName((_b = oneri.advisorUid) !== null && _b !== void 0 ? _b : '');
     await sendToUser(oneri.requesterUid, {
         title: isWeekly
-            ? `👗 ${(_c = dayLabels[oneri.dayIndex]) !== null && _c !== void 0 ? _c : 'Bugün'} için kombinin hazır 💛`
-            : '👗 Sana özel bir kombin hazır 💛',
-        body: `${stilist} senin için seçti, hadi bak ✨`,
+            ? `👔 ${(_c = dayLabels[oneri.dayIndex]) !== null && _c !== void 0 ? _c : 'Bugün'} için kombinin hazır 💛`
+            : '👔 Sana özel bir kombin hazır 💛',
+        body: `${stilist} senin için hazırladı, bak bakalım`,
         link: `/kombin?tab=history&focus=${event.params.sid}`,
     });
 });
@@ -187,8 +187,8 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
         if (after.requesterUid) {
             const stilist = await getName((_e = after.advisorUid) !== null && _e !== void 0 ? _e : '');
             await sendToUser(after.requesterUid, {
-                title: '🔄 Kombinin yenilendi 💛',
-                body: `${stilist} dokundu, göz at ✨`,
+                title: '🔄 Kombinin güncellendi 💛',
+                body: `${stilist} kombinini değiştirdi, göz at`,
                 link: `/kombin?tab=history&focus=${event.params.sid}`,
             });
         }
@@ -210,9 +210,10 @@ exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestion
             });
         }
         else if (last.role === 'advisor' && after.requesterUid) {
+            const stilist = await getName(last.uid || after.advisorUid || '');
             await sendToUser(after.requesterUid, {
-                title: '💬 Aşkından mesajın var 💌',
-                body: text || 'Sana yanıt yazdı 💌',
+                title: '💬 Aşkından mesajın var 💛',
+                body: text || `${stilist} sana yazdı`,
                 link: `/kombin?tab=history&focus=${event.params.sid}`,
             });
         }
