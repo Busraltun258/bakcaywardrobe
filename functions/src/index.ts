@@ -1,7 +1,18 @@
 import * as admin from 'firebase-admin'
-import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 
 admin.initializeApp()
+
+/** Bir kullanıcının görünen adını döndürür (bildirim metni için). */
+async function getName(uid: string): Promise<string> {
+  try {
+    const snap = await admin.firestore().doc(`profiles/${uid}`).get()
+    const d = snap.data() ?? {}
+    return (d.displayName as string) || (d.username as string) || 'Biri'
+  } catch {
+    return 'Biri'
+  }
+}
 
 /**
  * Bir kullanıcının kayıtlı tüm FCM token'larını alır.
@@ -117,4 +128,59 @@ export const onYeniTalep = onDocumentCreated('outfitRequests/{rid}', async (even
       : 'Yeni bir kullanıcı talebi geldi.',
     link: '/home',
   })
+})
+
+/**
+ * Bir öneri GÜNCELLENDİĞİNDE bildirim at:
+ *  - Yeni mesaj eklendiyse → karşı tarafa (yazan kim ise diğerine)
+ *      • kullanıcı yazdıysa + liked='no' → "değişiklik istendi"
+ *      • kullanıcı yazdıysa → "yeni mesaj"
+ *      • stilist yazdıysa → "stilistinden yanıt"
+ *  - Mesaj yoksa ama yıldız (rating) değiştiyse → stiliste "kombin puanlandı"
+ *
+ * Not: Yalnızca 'liked' değişen güncellemeler (ör. otomatik onarım, "tümünü gördüm")
+ * bilinçli olarak bildirim üretmez.
+ */
+export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', async (event) => {
+  const before = event.data?.before.data()
+  const after = event.data?.after.data()
+  if (!before || !after) return
+
+  const beforeMsgs = Array.isArray(before.messages) ? before.messages.length : 0
+  const afterMsgs = Array.isArray(after.messages) ? after.messages.length : 0
+
+  // 1) Yeni mesaj eklendi mi?
+  if (afterMsgs > beforeMsgs) {
+    const last = after.messages[afterMsgs - 1] ?? {}
+    const text = String(last.text ?? '').slice(0, 90)
+
+    if (last.role === 'user' && after.advisorUid) {
+      const name = await getName(last.uid || after.requesterUid || '')
+      const isChange = after.liked === 'no'
+      await sendToUser(after.advisorUid, {
+        title: isChange ? '🔄 Değişiklik istendi' : '💬 Yeni mesaj',
+        body: text || (isChange ? `${name} bir değişiklik istedi.` : `${name} sana mesaj yazdı.`),
+        link: '/home',
+      })
+    } else if (last.role === 'advisor' && after.requesterUid) {
+      await sendToUser(after.requesterUid, {
+        title: '💬 Stilistinden yanıt',
+        body: text || 'Stilistin sana yanıt yazdı.',
+        link: '/kombin?tab=history',
+      })
+    }
+    return
+  }
+
+  // 2) Yıldız (rating) değişti mi? (mesajsız puanlama)
+  const beforeRating = typeof before.rating === 'number' ? before.rating : 0
+  const afterRating = typeof after.rating === 'number' ? after.rating : 0
+  if (afterRating !== beforeRating && afterRating > 0 && after.advisorUid) {
+    const name = await getName(after.requesterUid || '')
+    await sendToUser(after.advisorUid, {
+      title: '⭐ Kombin puanlandı',
+      body: `${name} kombine ${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
+      link: '/home',
+    })
+  }
 })
