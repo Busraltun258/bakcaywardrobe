@@ -25,6 +25,8 @@ const EnableNotifications: React.FC = () => {
   const [registered, setRegistered] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  // Kalıcı durum yazısı — toast kaybolduğu için hatayı ekranda tutar (debug için)
+  const [statusLine, setStatusLine] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -54,17 +56,18 @@ const EnableNotifications: React.FC = () => {
       setRegistered(isPushRegistered(user.uid))
       if (res.status === 'granted') {
         message.success('Bildirimler açıldı 🔔')
-        setDismissed(true)
+        setStatusLine({ ok: true, text: '✅ Bağlandı — token kaydedildi.' })
+        setTimeout(() => setDismissed(true), 1500)
       } else if (res.status === 'denied') {
-        message.warning('İzin verilmedi. iPhone Ayarlar → Bildirimler’den açabilirsin.')
+        setStatusLine({ ok: false, text: '⚠️ İzin verilmedi. Ayarlar → Bildirimler → Bakçay.' })
       } else if (res.status === 'unsupported') {
-        message.info('Bu cihaz/tarayıcı bildirimleri desteklemiyor.')
+        setStatusLine({ ok: false, text: 'ℹ️ Bu cihaz/tarayıcı desteklemiyor.' })
       } else {
-        message.error(`Bildirim bağlanamadı: ${res.message}`)
+        setStatusLine({ ok: false, text: `❌ Bağlanamadı: ${res.message}` })
       }
     } catch (e) {
       console.error(e)
-      message.error('Bildirimler açılamadı, tekrar dene.')
+      setStatusLine({ ok: false, text: `❌ Hata: ${(e as Error)?.message ?? 'bilinmiyor'}` })
     } finally {
       setBusy(false)
     }
@@ -86,6 +89,19 @@ const EnableNotifications: React.FC = () => {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={styles.title}>Bildirimleri aç</div>
         <div style={styles.sub}>{subText}</div>
+        {statusLine && (
+          <div
+            style={{
+              fontSize: 12,
+              marginTop: 4,
+              fontWeight: 600,
+              color: statusLine.ok ? COLORS.success : COLORS.error,
+              wordBreak: 'break-word',
+            }}
+          >
+            {statusLine.text}
+          </div>
+        )}
       </div>
       {!iosNeedsInstall && !isBlocked && (
         <Button type="primary" size="small" loading={busy} onClick={handleEnable}>
