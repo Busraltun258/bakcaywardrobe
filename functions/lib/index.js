@@ -80,15 +80,19 @@ async function sendToUser(uid, payload) {
         console.info(`[notif] ${uid} için token yok`);
         return;
     }
+    // SADECE data — 'notification' paketi göndermiyoruz. Aksi halde tarayıcı bildirimi
+    // otomatik gösteriyor VE service worker elle gösteriyor → çift bildirim oluyor.
+    // Data-only ile gösterimi tek yerden (SW) yapıp tekilliği garanti ediyoruz.
     const response = await admin.messaging().sendEachForMulticast({
         tokens,
-        notification: { title: payload.title, body: payload.body },
+        data: {
+            title: payload.title,
+            body: payload.body,
+            link: payload.link,
+        },
         webpush: {
+            headers: { Urgency: 'high', TTL: '86400' },
             fcmOptions: { link: payload.link },
-            notification: {
-                icon: '/icon-192.png',
-                badge: '/icon-192.png',
-            },
         },
     });
     const stale = [];

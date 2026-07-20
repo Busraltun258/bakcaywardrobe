@@ -13,17 +13,21 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging()
 
-// Background notifications
+// Background notifications — SADECE data payload'ından okur ve TEK bildirim gösterir.
+// (Fonksiyon 'notification' paketi göndermiyor; böylece tarayıcı otomatik gösterip
+//  çift yapmıyor.) Sabit tag → aynı anda çift düşse bile üst üste biner, tek görünür.
 messaging.onBackgroundMessage((payload) => {
-  const title = (payload.notification && payload.notification.title) || 'Bakçay Kombin'
-  const body = (payload.notification && payload.notification.body) || ''
-  const link = (payload.fcmOptions && payload.fcmOptions.link) || (payload.data && payload.data.link) || '/'
+  const d = payload.data || {}
+  const title = d.title || 'Bakçay'
+  const body = d.body || ''
+  const link = d.link || (payload.fcmOptions && payload.fcmOptions.link) || '/'
 
   self.registration.showNotification(title, {
     body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: 'bk-bg-notif',
+    tag: 'bk-notif',
+    renotify: true,
     requireInteraction: false,
     data: { url: link },
   })

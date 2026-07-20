@@ -135,10 +135,12 @@ async function setup(uid: string): Promise<SetupResult> {
       localStorage.setItem(pushOkKey(uid), '1')
     } catch {}
 
-    // Uygulama açıkken gelen bildirimler için handler
+    // Uygulama açıkken gelen bildirimler için handler — data-only payload'dan okur.
     const unsub = onMessage(messaging, (payload) => {
-      const title = payload.notification?.title ?? 'Bakçay'
-      const body = payload.notification?.body ?? ''
+      const d = payload.data ?? {}
+      const title = d.title ?? 'Bakçay'
+      const body = d.body ?? ''
+      const link = d.link ?? payload.fcmOptions?.link
       try {
         const notif = new Notification(title, {
           body,
@@ -148,7 +150,6 @@ async function setup(uid: string): Promise<SetupResult> {
         })
         notif.onclick = () => {
           window.focus()
-          const link = payload.fcmOptions?.link
           if (link) window.location.href = link
           notif.close()
         }
