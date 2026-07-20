@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import { db, messagingPromise } from '../firebase'
 
 // Firebase Console → Project Settings → Cloud Messaging → "Web configuration"
+// Web Push certificates → "Current pair" public key (20 Tem 2026)
 const VAPID_KEY =
-  'BlqIVR_Ldt1_-f7UoViy3sDprdCIYsPLw6tWT4SjFK9B7yyhraxtKGbcj_DC93jzuTfi0iSn5bjl-adq47NKNnE'
+  'BIb3fkM-0H_rqXG0EvhCxJlyOJqiihq_DOD0zBbZUgwGBkNlnRyjw6uJsyKImO_0H_ZSIJsddZVFgAmS_VPQE-g'
 
 /**
  * Push notification kurulumu.
