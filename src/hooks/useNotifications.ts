@@ -11,7 +11,9 @@ const VAPID_KEY =
 
 // Token gerçekten alınıp profile yazıldığında set edilir. Banner'ın gizlenip
 // gizlenmeyeceğine bu belirler — izin "granted" olsa bile token yoksa banner kalır.
-const PUSH_OK_KEY = 'bk_push_ok'
+// HESAP BAZLI: aynı cihazda birden fazla hesap olabilir; her hesap kendi token'ını
+// kendi profiline yazmalı, o yüzden anahtar uid ile ayrılıyor.
+const pushOkKey = (uid: string) => `bk_push_ok_${uid}`
 
 export type EnableResult =
   | { status: 'granted' }
@@ -25,10 +27,10 @@ interface SetupResult {
   error?: string
 }
 
-/** Bu cihazda daha önce token başarıyla alınmış mı? (banner görünürlüğü için) */
-export function isPushRegistered(): boolean {
+/** Bu hesap için bu cihazda token başarıyla alınmış mı? (banner görünürlüğü için) */
+export function isPushRegistered(uid: string): boolean {
   try {
-    return localStorage.getItem(PUSH_OK_KEY) === '1'
+    return localStorage.getItem(pushOkKey(uid)) === '1'
   } catch {
     return false
   }
@@ -130,7 +132,7 @@ async function setup(uid: string): Promise<SetupResult> {
 
     try {
       localStorage.setItem('bk_fcm_token', token)
-      localStorage.setItem(PUSH_OK_KEY, '1')
+      localStorage.setItem(pushOkKey(uid), '1')
     } catch {}
 
     // Uygulama açıkken gelen bildirimler için handler

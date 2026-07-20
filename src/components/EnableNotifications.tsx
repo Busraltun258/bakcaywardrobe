@@ -33,8 +33,8 @@ const EnableNotifications: React.FC = () => {
       return
     }
     setPerm(Notification.permission)
-    setRegistered(isPushRegistered())
-  }, [])
+    setRegistered(user ? isPushRegistered(user.uid) : false)
+  }, [user?.uid])
 
   if (!user || dismissed) return null
   if (perm === 'unsupported') return null
@@ -51,7 +51,7 @@ const EnableNotifications: React.FC = () => {
     try {
       const res = await enableNotifications(user.uid)
       setPerm(Notification.permission)
-      setRegistered(isPushRegistered())
+      setRegistered(isPushRegistered(user.uid))
       if (res.status === 'granted') {
         message.success('Bildirimler açıldı 🔔')
         setDismissed(true)
