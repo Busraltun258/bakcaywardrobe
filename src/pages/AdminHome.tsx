@@ -40,8 +40,8 @@ import {
   query,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
@@ -67,6 +67,12 @@ const AdminHome: React.FC = () => {
   const [suggSearch, setSuggSearch] = useState('')
   // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
   const [jumpBackY, setJumpBackY] = useState<number | null>(null)
+  
+  // Bildirimden gelen ?focus=<id> — ilgili sekmeye geçip o kombine kaydır
+  const [searchParams] = useSearchParams()
+  const focusId = searchParams.get('focus')
+  const focusDone = useRef(false)
+  const [activeTab, setActiveTab] = useState<string>(focusId ? 'suggestions' : 'incoming')
 
   // Bir parçanın en son kullanıldığı BAŞKA kombine kaydır + vurgu.
   const jumpToItemUsage = (itemId: string, fromSuggestionId: string) => {
@@ -202,6 +208,24 @@ const AdminHome: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, suggSearch, clothesCache, profiles])
 
+  // --- FOCUS EFEKTİ ---
+  useEffect(() => {
+    if (!focusId || focusDone.current || loading) return
+
+    // DOM'un render olması için kısa bir gecikme ekliyoruz
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`suggestion-${focusId}`)
+      if (el) {
+        focusDone.current = true
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bk-pulse-highlight')
+        setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+      }
+    }, 150)
+
+    return () => clearTimeout(timer)
+  }, [focusId, loading, suggestions])
+
   const stats = useMemo(() => {
     const total = suggestions.length
     const liked = suggestions.filter((s) => s.liked === 'yes').length
@@ -261,7 +285,8 @@ const AdminHome: React.FC = () => {
 
         {/* Tabs */}
         <Tabs
-          defaultActiveKey="incoming"
+          activeKey={activeTab}
+          onChange={setActiveTab}
           size="large"
           items={[
             {
@@ -342,7 +367,6 @@ const AdminHome: React.FC = () => {
                       onOk: async () => {
                         try {
                           await deleteDoc(doc(db, 'outfitSuggestions', s.id))
-                          // Bu talep için başka öneri kaldı mı?
                           const remaining = suggestions.filter(
                             (x) => x.requestId === s.requestId && x.id !== s.id,
                           )

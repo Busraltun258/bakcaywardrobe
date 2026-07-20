@@ -146,6 +146,9 @@ const OutfitHub: React.FC = () => {
   )
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
   const autoTabDone = useRef(false)
+  // Bildirimden gelen ?focus=<id> — o kombine kaydırmak için
+  const focusId = searchParams.get('focus')
+  const focusDone = useRef(false)
   // Zaten onarılan öneriler — aynı kaydı tekrar tekrar yazmamak için
   const healedRef = useRef<Set<string>>(new Set())
   const [historySearch, setHistorySearch] = useState('')
@@ -270,6 +273,21 @@ const OutfitHub: React.FC = () => {
     autoTabDone.current = true
     setActiveTab(unreadCount > 0 ? 'history' : 'new')
   }, [explicitTab, suggestionsLoaded, unreadCount])
+
+  // Bildirime tıklayınca gelen kombine kaydır + vurgula (bir kez).
+  useEffect(() => {
+    if (!focusId || focusDone.current || !suggestionsLoaded) return
+    setActiveTab('history')
+    const t = setTimeout(() => {
+      const el = document.getElementById(`suggestion-${focusId}`)
+      if (!el) return
+      focusDone.current = true
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('bk-pulse-highlight')
+      setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+    }, 450)
+    return () => clearTimeout(t)
+  }, [focusId, suggestionsLoaded])
 
   // Dolabı sayfa açılınca BİR KEZ yükle — her SuggestionCard'ın ayrı sorgu atmasını
   // engeller. Dolabım sayfasının cache'ini de paylaşırız → cold start anında render.

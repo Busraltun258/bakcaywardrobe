@@ -109,7 +109,7 @@ export const onYeniOneri = onDocumentCreated('outfitSuggestions/{sid}', async (e
       ? `👗 ${dayLabels[oneri.dayIndex] ?? 'Bugün'} için kombinin hazır 💛`
       : '👗 Sana özel bir kombin hazır 💛',
     body: `${stilist} senin için seçti, hadi bak ✨`,
-    link: '/kombin?tab=history',
+    link: `/kombin?tab=history&focus=${event.params.sid}`,
   })
 })
 
@@ -161,7 +161,7 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
       await sendToUser(after.requesterUid, {
         title: '🔄 Kombinin yenilendi 💛',
         body: `${stilist} dokundu, göz at ✨`,
-        link: '/kombin?tab=history',
+        link: `/kombin?tab=history&focus=${event.params.sid}`,
       })
     }
     return
@@ -181,13 +181,13 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
       await sendToUser(after.advisorUid, {
         title: isChange ? `🔄 ${name} değişiklik istedi` : '💬 Aşkından mesajın var 💌',
         body: text || (isChange ? 'Bir değişiklik istedi.' : `${name} sana yazdı`),
-        link: '/home',
+        link: `/home?focus=${event.params.sid}`,
       })
     } else if (last.role === 'advisor' && after.requesterUid) {
       await sendToUser(after.requesterUid, {
         title: '💬 Aşkından mesajın var 💌',
         body: text || 'Sana yanıt yazdı 💌',
-        link: '/kombin?tab=history',
+        link: `/kombin?tab=history&focus=${event.params.sid}`,
       })
     }
     return
@@ -201,7 +201,7 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
     await sendToUser(after.advisorUid, {
       title: `⭐ ${name} kombini puanladı`,
       body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
-      link: '/home',
+      link: `/home?focus=${event.params.sid}`,
     })
   }
 })
