@@ -122,6 +122,7 @@ export interface UserProfile {
   updatedAt?: number
   isAdmin?: boolean
   fcmToken?: string
+  fcmTokens?: string[]
 }
 
 /** Spark / ücretsiz kullanım için toplam üst sınır */

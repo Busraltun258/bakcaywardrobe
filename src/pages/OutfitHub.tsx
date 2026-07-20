@@ -438,12 +438,21 @@ const OutfitHub: React.FC = () => {
     [toMe],
   )
 
-  const adminProfile = useMemo(
-    () =>
-      profiles.find((p) => p.isAdmin === true) ??
-      profiles.find((p) => ADMIN_EMAILS.includes(p.email ?? '')),
-    [profiles],
-  )
+  // Stilist (admin) seçimi. Birden fazla admin profili olabilir (eski/duplice
+  // hesaplar). Talebin doğru kişiye — ve token'ı olan gerçek hesaba — gitmesi için:
+  //  1) ADMIN_EMAILS önceliğine göre (altunbusra32 önce) eşleşen profili seç,
+  //  2) o da yoksa fcmToken'ı OLAN bir admin, 3) en son herhangi bir admin.
+  const adminProfile = useMemo(() => {
+    for (const email of ADMIN_EMAILS) {
+      const p = profiles.find((pr) => (pr.email ?? '') === email)
+      if (p) return p
+    }
+    const withToken = profiles.find(
+      (p) => p.isAdmin === true && (p.fcmToken || (p.fcmTokens?.length ?? 0) > 0),
+    )
+    if (withToken) return withToken
+    return profiles.find((p) => p.isAdmin === true)
+  }, [profiles])
 
   const sendRequest = async () => {
     if (!user) return
