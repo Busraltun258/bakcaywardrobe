@@ -37,6 +37,8 @@ export interface OutfitRequest {
   note: string
   status: OutfitRequestStatus
   createdAt: number
+  /** Kullanıcının "şu parçaları kullan" diye seçtiği kıyafet id'leri (opsiyonel). */
+  requestedItemIds?: string[]
   /** Tek seferlik talep için kombin günü. */
   requestDate?: string
   /** 'single' (varsayılan) veya 'weekly'. */

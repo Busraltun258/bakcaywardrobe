@@ -183,6 +183,13 @@ const AdminHome: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestions.map((s) => s.id).join('|')])
 
+  // Bekleyen taleplerde kullanıcının seçtiği parçaların görsellerini yükle
+  useEffect(() => {
+    const ids = pendingRequests.flatMap((r) => r.requestedItemIds ?? [])
+    if (ids.length) loadClothes(ids)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRequests.map((r) => r.id).join('|')])
+
   const rows = useMemo(() => {
     return suggestions.map((s) => ({ s, r: reqCache[s.requestId] }))
   }, [suggestions, reqCache])
@@ -321,6 +328,7 @@ const AdminHome: React.FC = () => {
                 <IncomingRequestsList
                   requests={pendingRequests}
                   profileName={profileName}
+                  clothesCache={clothesCache}
                   onRespond={(r) => navigate(`/kombin/yanit/${r.id}`)}
                   onDelete={(r) => {
                     modal.confirm({
@@ -466,9 +474,10 @@ const StatCard: React.FC<{
 const IncomingRequestsList: React.FC<{
   requests: OutfitRequest[]
   profileName: (uid: string) => string
+  clothesCache: Record<string, ClothingItem>
   onRespond: (r: OutfitRequest) => void
   onDelete: (r: OutfitRequest) => void
-}> = ({ requests, profileName, onRespond, onDelete }) => {
+}> = ({ requests, profileName, clothesCache, onRespond, onDelete }) => {
   if (requests.length === 0) {
     return (
       <Card>
@@ -529,6 +538,32 @@ const IncomingRequestsList: React.FC<{
               </p>
             ) : (
               <p style={{ fontSize: 12, color: COLORS.textMuted, margin: 0 }}>Not eklenmedi</p>
+            )}
+
+            {(r.requestedItemIds?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: COLORS.primary, fontWeight: 600, marginBottom: 6 }}>
+                  🧺 Bu parçaları istedi:
+                </div>
+                <div style={styles.reqThumbs}>
+                  {r.requestedItemIds!.map((id) => {
+                    const c = clothesCache[id]
+                    return (
+                      <div key={id} style={styles.reqThumbCell}>
+                        {c ? (
+                          <SmartImage
+                            cacheKey={c.id}
+                            src={clothingItemImageSrc(c)}
+                            style={{ width: '100%', height: '100%' }}
+                          />
+                        ) : (
+                          <div className="skeleton" style={{ width: '100%', height: '100%' }} />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             )}
           </Card>
         </Col>
@@ -915,6 +950,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: COLORS.textSecondary,
     fontStyle: 'italic' as const,
+  },
+  reqThumbs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))',
+    gap: 6,
+  },
+  reqThumbCell: {
+    aspectRatio: '1',
+    borderRadius: 8,
+    overflow: 'hidden',
+    background: COLORS.bgCard,
+    border: `1px solid ${COLORS.border}`,
   },
   suggThumbs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   thumbCol: {

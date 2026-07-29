@@ -32,7 +32,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import Lightbox from '../components/Lightbox'
@@ -139,6 +139,16 @@ const RespondOutfit: React.FC = () => {
       setLoading(false)
     })()
   }, [req?.wardrobeOwnerUid])
+
+  // Kamuran istekle birlikte "şu parçaları kullan" diye parça seçtiyse, Büşra öneri
+  // hazırlarken o parçalar önceden seçili gelsin. Sadece bir kez uygulanır.
+  const prefilledSel = useRef(false)
+  useEffect(() => {
+    if (prefilledSel.current || !req) return
+    prefilledSel.current = true
+    const ids = req.requestedItemIds ?? []
+    if (ids.length > 0) setSelected(new Set(ids))
+  }, [req])
 
   // Bu kullanıcı için hazırlanmış taslakları çek (admin için)
   useEffect(() => {
@@ -344,6 +354,16 @@ const RespondOutfit: React.FC = () => {
               <strong style={{ color: COLORS.text }}>İstek notu:</strong> "{req.note}"
             </p>
           </Card>
+        )}
+
+        {(req.requestedItemIds?.length ?? 0) > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 14 }}
+            message={`🧺 Bu ${req.requestedItemIds!.length} parçayı senin için önceden seçtim`}
+            description="Kamuran isteğinde bu parçaları kullanmanı istemiş. Dilediğini çıkarabilir, yenisini ekleyebilirsin."
+          />
         )}
 
         {/* Haftalık ise gün seçici */}

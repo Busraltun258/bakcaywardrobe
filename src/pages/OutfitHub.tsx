@@ -47,7 +47,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
@@ -115,6 +115,7 @@ interface WeatherData {
 const OutfitHub: React.FC = () => {
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
+  const routerLocation = useLocation()
   const { message, modal } = App.useApp()
 
   const [profiles, setProfiles] = useState<UserProfile[]>([])
@@ -123,6 +124,8 @@ const OutfitHub: React.FC = () => {
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
   const [allClothes, setAllClothes] = useState<Record<string, ClothingItem>>({})
   const [note, setNote] = useState('')
+  // İstatistikten "bu parçalarla kombin iste" ile gelen, isteğe eklenen parça id'leri
+  const [requestItemIds, setRequestItemIds] = useState<string[]>([])
   const [requestType, setRequestType] = useState<RequestType>('single')
   const [requestDate, setRequestDate] = useState<Dayjs>(() => dayjs())
   const [weekStart, setWeekStart] = useState<Dayjs>(() => dayjs().startOf('week').add(1, 'day'))
@@ -155,6 +158,9 @@ const OutfitHub: React.FC = () => {
   const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)
   // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
   const [jumpBackY, setJumpBackY] = useState<number | null>(null)
+  // "Geri dön" butonu: kısa dokunuş → önceki kombine, uzun basış (~0,5sn) → en başa.
+  // Basış süresini tıklama anında ölçüyoruz (timer güvenilmez oluyordu, hep başa atıyordu).
+  const pressStartRef = useRef(0)
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
@@ -273,6 +279,21 @@ const OutfitHub: React.FC = () => {
     autoTabDone.current = true
     setActiveTab(unreadCount > 0 ? 'history' : 'new')
   }, [explicitTab, suggestionsLoaded, unreadCount])
+
+  // İstatistik ekranından "Bu parçalarla kombin iste" ile gelindiğinde: seçilen
+  // parçalar isteğe eklenir (görselleriyle) ve "Yeni Kombin" sekmesine geçilir.
+  const prefillDone = useRef(false)
+  useEffect(() => {
+    if (prefillDone.current) return
+    const itemIds = (routerLocation.state as { requestItemIds?: string[] } | null)?.requestItemIds
+    if (!itemIds || itemIds.length === 0) return
+    prefillDone.current = true
+    autoTabDone.current = true
+    setRequestItemIds(itemIds)
+    setActiveTab('new')
+    // State'i temizle ki sayfa yenilenince/geri gelince tekrar dolmasın.
+    navigate(routerLocation.pathname + routerLocation.search, { replace: true, state: {} })
+  }, [routerLocation.state])
 
   // Bildirime tıklayınca gelen kombine kaydır + vurgula (bir kez).
   useEffect(() => {
@@ -498,8 +519,12 @@ const OutfitHub: React.FC = () => {
       if (weather) {
         payload.weather = weather
       }
+      if (requestItemIds.length > 0) {
+        payload.requestedItemIds = requestItemIds
+      }
       await addDoc(collection(db, 'outfitRequests'), payload)
       setNote('')
+      setRequestItemIds([])
       setRequestDate(dayjs())
       setWeekStart(dayjs().startOf('week').add(1, 'day'))
       message.success(
@@ -600,6 +625,44 @@ const OutfitHub: React.FC = () => {
           },
         ]}
       />
+
+      {requestItemIds.length > 0 && (
+        <div style={styles.reqItemsBox}>
+          <div style={styles.reqItemsHead}>
+            🧺 Bu parçalarla:
+            <span style={{ color: COLORS.textMuted, fontWeight: 400 }}>
+              {' '}
+              stiliste görselleriyle gider
+            </span>
+          </div>
+          <div style={styles.reqItemsGrid}>
+            {requestItemIds.map((id) => {
+              const c = allClothes[id]
+              return (
+                <div key={id} style={styles.reqItemCell}>
+                  {c ? (
+                    <SmartImage
+                      cacheKey={c.id}
+                      src={clothingItemImageSrc(c)}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  ) : (
+                    <div className="skeleton" style={{ width: '100%', height: '100%' }} />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRequestItemIds((prev) => prev.filter((x) => x !== id))}
+                    style={styles.reqItemRemove}
+                    aria-label="Parçayı çıkar"
+                  >
+                    <CloseCircleFilled />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <Input.TextArea
         placeholder={
@@ -903,11 +966,18 @@ const OutfitHub: React.FC = () => {
       {jumpBackY !== null && (
         <button
           type="button"
+          onPointerDown={() => {
+            pressStartRef.current = Date.now()
+          }}
           onClick={() => {
-            window.scrollTo({ top: jumpBackY, behavior: 'smooth' })
+            // Basış süresine göre karar ver: 500ms+ tutulduysa en başa, yoksa önceki kombine.
+            const held = Date.now() - (pressStartRef.current || Date.now())
+            const target = held >= 500 ? 0 : jumpBackY ?? 0
+            window.scrollTo({ top: target, behavior: 'smooth' })
             setJumpBackY(null)
           }}
           style={styles.jumpBackBtn}
+          title="Dokun: önceki kombine · Basılı tut: en başa"
         >
           <ArrowUpOutlined /> Geri dön
         </button>
@@ -1704,6 +1774,50 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center' as const,
     fontStyle: 'italic' as const,
     lineHeight: 1.5,
+  },
+  reqItemsBox: {
+    background: 'rgba(124,140,255,0.06)',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  reqItemsHead: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  reqItemsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))',
+    gap: 8,
+  },
+  reqItemCell: {
+    position: 'relative' as const,
+    aspectRatio: '1',
+    borderRadius: 10,
+    overflow: 'hidden',
+    background: COLORS.bgCard,
+    border: `1px solid ${COLORS.border}`,
+  },
+  reqItemRemove: {
+    position: 'absolute' as const,
+    top: 2,
+    right: 2,
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    border: 'none',
+    padding: 0,
+    background: 'rgba(0,0,0,0.55)',
+    color: '#fff',
+    fontSize: 15,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    lineHeight: 0,
   },
   requestBlock: { padding: '12px 0' },
   weekDayCard: {

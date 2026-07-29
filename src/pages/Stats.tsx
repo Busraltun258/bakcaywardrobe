@@ -1,6 +1,7 @@
 import {
   ArrowLeftOutlined,
   BulbOutlined,
+  CheckCircleFilled,
   CommentOutlined,
   HeartFilled,
   PieChartOutlined,
@@ -29,6 +30,13 @@ import { CATEGORIES, ClothingItem, OutfitSuggestion, SEASONS, UserProfile } from
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { getCurrentSeasons, getItemSeasons, isOutOfSeason } from '../utils/seasonFilter'
 
+// "Deniz şortu"nu normal şorttan ayır: ayrı bir kategori olmadığı için parça
+// adı/açıklamasındaki yüzme anahtar kelimelerine bakıyoruz. Sadece Şort kategorisinde
+// aranıyor ki "deniz mavisi tişört" gibi renkler yanlışlıkla elenmesin.
+const SWIM_SHORT_RE = /(deniz|mayo|y[uü]zme|havuz|plaj|swim|bikini|board ?short)/i
+const isBeachShorts = (c: ClothingItem) =>
+  c.category === 'sort' && SWIM_SHORT_RE.test(`${c.label ?? ''} ${c.description ?? ''}`)
+
 /**
  * Kullanıcı istatistikleri:
  * - Dolap büyüklüğü ve kategori dağılımı
@@ -44,6 +52,9 @@ const Stats: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [lightboxItems, setLightboxItems] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  // "Bu parçalarla kombin iste": seçim modu + seçilen parça id'leri
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   // İstatistiklerin hangi kullanıcıya ait olduğu:
   //  - Kamuran (admin değil) → kendi verisi
   //  - Büşra (admin) → Kamuran'ın (admin olmayan kullanıcının) verisi
@@ -132,6 +143,7 @@ const Stats: React.FC = () => {
     const allUnused = clothes.filter(
       (c) =>
         c.category !== 'aksesuar' &&
+        !isBeachShorts(c) &&
         !usedIds.has(c.id) &&
         (c.createdAt ?? now) <= now - FORTY_FIVE_DAYS &&
         !isOutOfSeason(getItemSeasons(c), currentSeasons),
@@ -161,16 +173,36 @@ const Stats: React.FC = () => {
   }, [suggestions, clothes])
 
   const categoryStats = useMemo(() => {
-    // Aksesuarlar istatistiğe katılmaz — yüzdeler de aksesuarsız toplam üzerinden.
-    const denom = clothes.filter((c) => c.category !== 'aksesuar').length
+    // Aksesuarlar ve deniz şortları istatistiğe katılmaz — yüzdeler de bunlar hariç toplam üzerinden.
+    const analytic = clothes.filter((c) => c.category !== 'aksesuar' && !isBeachShorts(c))
+    const denom = analytic.length
     return CATEGORIES.filter((cat) => cat.key !== 'aksesuar')
       .map((cat) => {
-        const count = clothes.filter((c) => c.category === cat.key).length
+        const count = analytic.filter((c) => c.category === cat.key).length
         const pct = denom > 0 ? Math.round((count / denom) * 100) : 0
         return { ...cat, count, pct }
       })
       .sort((a, b) => b.count - a.count)
   }, [clothes])
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Seçilen parçaların id'lerini "Yeni Kombin" ekranına taşı — orada görselleriyle
+  // birlikte gösterilip stiliste öyle gönderilecek.
+  const requestWithSelected = () => {
+    const chosen = stats.unused.filter((c) => selectedIds.has(c.id))
+    if (chosen.length === 0) return
+    setSelecting(false)
+    setSelectedIds(new Set())
+    navigate('/kombin?tab=new', { state: { requestItemIds: chosen.map((c) => c.id) } })
+  }
 
   if (loading) {
     return (
@@ -346,38 +378,85 @@ const Stats: React.FC = () => {
               ))}
             </div>
 
+            {selecting && (
+              <p style={{ fontSize: 12, color: COLORS.primary, margin: '0 0 8px' }}>
+                Kombin istemek istediğin parçalara dokun, sonra "İste" de.
+              </p>
+            )}
+
             <div style={styles.unusedGrid}>
-              {stats.unused.map((c, idx) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    setLightboxItems(stats.unused)
-                    setLightboxIndex(idx)
-                  }}
-                  style={styles.unusedCell}
-                >
-                  <SmartImage
-                    cacheKey={c.id}
-                    src={clothingItemImageSrc(c)}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                  {(c.label || c.description) && (
-                    <span style={styles.unusedLabel}>{c.label || c.description}</span>
-                  )}
-                </button>
-              ))}
+              {stats.unused.map((c, idx) => {
+                const isSel = selectedIds.has(c.id)
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      if (selecting) {
+                        toggleSelect(c.id)
+                      } else {
+                        setLightboxItems(stats.unused)
+                        setLightboxIndex(idx)
+                      }
+                    }}
+                    style={{
+                      ...styles.unusedCell,
+                      ...(selecting && isSel ? styles.unusedCellSelected : {}),
+                    }}
+                  >
+                    <SmartImage
+                      cacheKey={c.id}
+                      src={clothingItemImageSrc(c)}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                    {selecting && (
+                      <span style={styles.selectOverlay}>
+                        {isSel && <CheckCircleFilled style={styles.selectCheck} />}
+                      </span>
+                    )}
+                    {(c.label || c.description) && (
+                      <span style={styles.unusedLabel}>{c.label || c.description}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              block
-              style={{ marginTop: 12 }}
-              onClick={() => navigate('/kombin')}
-            >
-              Bu Parçalarla Kombin İste
-            </Button>
+            {!selecting ? (
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                block
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setSelecting(true)
+                  setSelectedIds(new Set())
+                }}
+              >
+                Bu Parçalarla Kombin İste
+              </Button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <Button
+                  block
+                  onClick={() => {
+                    setSelecting(false)
+                    setSelectedIds(new Set())
+                  }}
+                >
+                  Vazgeç
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  block
+                  disabled={selectedIds.size === 0}
+                  onClick={requestWithSelected}
+                >
+                  İste{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                </Button>
+              </div>
+            )}
           </Card>
         ) : clothes.length > 0 ? (
           <Card style={{ marginBottom: 16 }}>
@@ -526,10 +605,29 @@ const styles: Record<string, React.CSSProperties> = {
     aspectRatio: '1',
     borderRadius: 10,
     overflow: 'hidden',
-    border: 'none',
+    border: '2px solid transparent',
     padding: 0,
     cursor: 'pointer',
     background: COLORS.bgCard,
+  },
+  unusedCellSelected: {
+    border: `2px solid ${COLORS.primary}`,
+    boxShadow: `0 0 0 2px ${COLORS.primary}55`,
+  },
+  selectOverlay: {
+    position: 'absolute' as const,
+    inset: 0,
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-end',
+    padding: 4,
+    background: 'rgba(0,0,0,0.15)',
+  },
+  selectCheck: {
+    color: COLORS.primary,
+    fontSize: 20,
+    background: '#fff',
+    borderRadius: '50%',
   },
   unusedLabel: {
     position: 'absolute' as const,
