@@ -156,10 +156,12 @@ const OutfitHub: React.FC = () => {
   const healedRef = useRef<Set<string>>(new Set())
   const [historySearch, setHistorySearch] = useState('')
   const [editingReq, setEditingReq] = useState<OutfitRequest | null>(null)
-  // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
-  const [jumpBackY, setJumpBackY] = useState<number | null>(null)
-  // "Geri dön" butonu: kısa dokunuş → önceki kombine, uzun basış (~0,5sn) → en başa.
-  // Basış süresini tıklama anında ölçüyoruz (timer güvenilmez oluyordu, hep başa atıyordu).
+  // "Geri dön" için geri-dönüş yığını: her ok atlamasında bulunulan konum eklenir.
+  // Böylece 15 kombinde gezsen bile her basışta bir öncekine dönebilirsin.
+  // Kısa dokunuş → bir öncekine (yığın boşsa doğrudan en başa), uzun basış → hep en başa.
+  // Buton, ok atlaması olmasa da sayfa aşağı kaydırılınca görünür (başa dönebilmek için).
+  const [backStack, setBackStack] = useState<number[]>([])
+  const [scrolledDown, setScrolledDown] = useState(false)
   const pressStartRef = useRef(0)
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
@@ -279,6 +281,14 @@ const OutfitHub: React.FC = () => {
     autoTabDone.current = true
     setActiveTab(unreadCount > 0 ? 'history' : 'new')
   }, [explicitTab, suggestionsLoaded, unreadCount])
+
+  // Sayfa aşağı kaydırılınca "Geri dön" butonunu göster (başa dönebilmek için).
+  useEffect(() => {
+    const onScroll = () => setScrolledDown(window.scrollY > 400)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // İstatistik ekranından "Bu parçalarla kombin iste" ile gelindiğinde: seçilen
   // parçalar isteğe eklenir (görselleriyle) ve "Yeni Kombin" sekmesine geçilir.
@@ -769,27 +779,32 @@ const OutfitHub: React.FC = () => {
     </>
   )
 
-  // Bir parçanın en son kullanıldığı BAŞKA kombine kaydır + vurgu.
-  // Kaydırmadan önce mevcut konumu sakla ki "Geri dön" ile dönebilsin.
+  // Bir parçanın geçtiği kombinler arasında SIRAYLA gez: her tıklamada bir sonrakine
+  // atlar, sona gelince başa döner (A→B→C→…→A). Atlamadan önce mevcut konumu geri-dönüş
+  // yığınına ekler ki "Geri dön" ile adım adım geriye dönebilesin.
   const jumpToItemUsage = (itemId: string, fromSuggestionId: string) => {
-    const target = [...suggestions]
-      .filter(
-        (s) => s.id !== fromSuggestionId && (s.clothingItemIds ?? []).includes(itemId),
-      )
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]
-    if (!target) {
+    const all = [...suggestions]
+      .filter((s) => (s.clothingItemIds ?? []).includes(itemId))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    if (all.length <= 1) {
       message.info('Bu parça başka bir kombinde kullanılmamış')
       return
     }
-    const el = document.getElementById(`suggestion-${target.id}`)
-    if (!el) {
-      message.info('İlgili kombin bu listede görünmüyor')
-      return
+    const startIdx = all.findIndex((s) => s.id === fromSuggestionId)
+    // startIdx'ten itibaren, DOM'da gerçekten bulunan bir SONRAKI kombine git.
+    for (let step = 1; step <= all.length; step++) {
+      const cand = all[(startIdx + step) % all.length]
+      if (cand.id === fromSuggestionId) break
+      const el = document.getElementById(`suggestion-${cand.id}`)
+      if (el) {
+        setBackStack((s) => [...s, window.scrollY])
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bk-pulse-highlight')
+        setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+        return
+      }
     }
-    setJumpBackY(window.scrollY)
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('bk-pulse-highlight')
-    setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+    message.info('İlgili kombin bu listede görünmüyor')
   }
 
   // İlk değerlendirilmemiş öneriye scroll et + glow efekti
@@ -963,21 +978,33 @@ const OutfitHub: React.FC = () => {
         />
       </div>
 
-      {jumpBackY !== null && (
+      {(backStack.length > 0 || scrolledDown) && (
         <button
           type="button"
           onPointerDown={() => {
             pressStartRef.current = Date.now()
           }}
           onClick={() => {
-            // Basış süresine göre karar ver: 500ms+ tutulduysa en başa, yoksa önceki kombine.
             const held = Date.now() - (pressStartRef.current || Date.now())
-            const target = held >= 500 ? 0 : jumpBackY ?? 0
-            window.scrollTo({ top: target, behavior: 'smooth' })
-            setJumpBackY(null)
+            if (held >= 500) {
+              // Uzun basış → hep en başa dön, yığını temizle
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+              setBackStack([])
+            } else if (backStack.length > 0) {
+              // Kısa dokunuş → bir öncekine dön (yığından bir adım çıkar)
+              setBackStack((s) => {
+                const next = [...s]
+                const y = next.pop() ?? 0
+                window.scrollTo({ top: y, behavior: 'smooth' })
+                return next
+              })
+            } else {
+              // Yığın boşsa (sadece aşağı kaydırmışsan) → doğrudan en başa
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            }
           }}
           style={styles.jumpBackBtn}
-          title="Dokun: önceki kombine · Basılı tut: en başa"
+          title="Dokun: bir öncekine · Basılı tut: en başa"
         >
           <ArrowUpOutlined /> Geri dön
         </button>

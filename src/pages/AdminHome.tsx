@@ -65,9 +65,13 @@ const AdminHome: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [lightboxItem, setLightboxItem] = useState<ClothingItem | null>(null)
   const [suggSearch, setSuggSearch] = useState('')
-  // "Geri dön" için: bir parçadan kombine atlarken kaydedilen kaydırma konumu
-  const [jumpBackY, setJumpBackY] = useState<number | null>(null)
-  
+  // "Geri dön" geri-dönüş yığını: her ok atlamasında konum eklenir; kısa dokunuş bir
+  // öncekine döner, uzun basış hep en başa. Buton, ok atlaması olmasa da sayfa aşağı
+  // kaydırılınca görünür (başa dönebilmek için).
+  const [backStack, setBackStack] = useState<number[]>([])
+  const [scrolledDown, setScrolledDown] = useState(false)
+  const pressStartRef = useRef(0)
+
   // Bildirimden gelen ?focus=<id> — ilgili sekmeye geçip o kombine kaydır
   const [searchParams] = useSearchParams()
   const focusId = searchParams.get('focus')
@@ -75,26 +79,40 @@ const AdminHome: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>(focusId ? 'suggestions' : 'incoming')
 
   // Bir parçanın en son kullanıldığı BAŞKA kombine kaydır + vurgu.
+  // Parçanın geçtiği kombinler arasında sırayla gez (sona gelince başa döner),
+  // eskiden sadece en yeni 2 kombin arasında gidip geliyordu. DOM'da olmayan
+  // (filtrelenmiş) kombinleri atlar ki iki kombin arasında takılmasın.
   const jumpToItemUsage = (itemId: string, fromSuggestionId: string) => {
-    const target = [...suggestions]
-      .filter(
-        (s) => s.id !== fromSuggestionId && (s.clothingItemIds ?? []).includes(itemId),
-      )
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]
-    if (!target) {
+    const all = [...suggestions]
+      .filter((s) => (s.clothingItemIds ?? []).includes(itemId))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    if (all.length <= 1) {
       message.info('Bu parça başka bir kombinde kullanılmamış')
       return
     }
-    const el = document.getElementById(`suggestion-${target.id}`)
-    if (!el) {
-      message.info('İlgili kombin bu listede görünmüyor')
-      return
+    const startIdx = all.findIndex((s) => s.id === fromSuggestionId)
+    for (let step = 1; step <= all.length; step++) {
+      const cand = all[(startIdx + step) % all.length]
+      if (cand.id === fromSuggestionId) break
+      const el = document.getElementById(`suggestion-${cand.id}`)
+      if (el) {
+        setBackStack((s) => [...s, window.scrollY])
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bk-pulse-highlight')
+        setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+        return
+      }
     }
-    setJumpBackY(window.scrollY)
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.classList.add('bk-pulse-highlight')
-    setTimeout(() => el.classList.remove('bk-pulse-highlight'), 2500)
+    message.info('İlgili kombin bu listede görünmüyor')
   }
+
+  // Sayfa aşağı kaydırılınca "Geri dön" butonunu göster (başa dönebilmek için).
+  useEffect(() => {
+    const onScroll = () => setScrolledDown(window.scrollY > 400)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -414,14 +432,30 @@ const AdminHome: React.FC = () => {
         />
       </div>
 
-      {jumpBackY !== null && (
+      {(backStack.length > 0 || scrolledDown) && (
         <button
           type="button"
+          onPointerDown={() => {
+            pressStartRef.current = Date.now()
+          }}
           onClick={() => {
-            window.scrollTo({ top: jumpBackY, behavior: 'smooth' })
-            setJumpBackY(null)
+            const held = Date.now() - (pressStartRef.current || Date.now())
+            if (held >= 500) {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+              setBackStack([])
+            } else if (backStack.length > 0) {
+              setBackStack((s) => {
+                const next = [...s]
+                const y = next.pop() ?? 0
+                window.scrollTo({ top: y, behavior: 'smooth' })
+                return next
+              })
+            } else {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            }
           }}
           style={styles.jumpBackBtn}
+          title="Dokun: bir öncekine · Basılı tut: en başa"
         >
           <ArrowUpOutlined /> Geri dön
         </button>
