@@ -35,7 +35,11 @@ const DaySlider: React.FC<{ days: DaySlide[]; initialKey?: number }> = ({ days, 
           <button
             key={d.key}
             type="button"
-            onClick={() => ref.current?.goTo(i)}
+            onClick={() => {
+              // Vurguyu ANINDA güncelle; animasyon bitmesini bekleme (geriden gelmesin).
+              setActive(i)
+              ref.current?.goTo(i)
+            }}
             style={{ ...styles.pill, ...(i === active ? styles.pillActive : {}) }}
           >
             {d.label}
@@ -46,6 +50,7 @@ const DaySlider: React.FC<{ days: DaySlide[]; initialKey?: number }> = ({ days, 
       <Carousel
         ref={ref as never}
         initialSlide={startIdx}
+        beforeChange={(_, to) => setActive(to)}
         afterChange={(i) => setActive(i)}
         dots={false}
         infinite={false}
