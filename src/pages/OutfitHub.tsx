@@ -127,7 +127,8 @@ const OutfitHub: React.FC = () => {
   // İstatistikten "bu parçalarla kombin iste" ile gelen, isteğe eklenen parça id'leri
   const [requestItemIds, setRequestItemIds] = useState<string[]>([])
   const [requestType, setRequestType] = useState<RequestType>('single')
-  const [requestDate, setRequestDate] = useState<Dayjs>(() => dayjs())
+  // Genelde bugün istenip yarın giyildiği için varsayılan tarih = yarın.
+  const [requestDate, setRequestDate] = useState<Dayjs>(() => dayjs().add(1, 'day'))
   const [weekStart, setWeekStart] = useState<Dayjs>(() => dayjs().startOf('week').add(1, 'day'))
   const [sending, setSending] = useState(false)
   const [weather, setWeather] = useState<WeatherData | null>(null)
@@ -163,6 +164,9 @@ const OutfitHub: React.FC = () => {
   const [backStack, setBackStack] = useState<number[]>([])
   const [scrolledDown, setScrolledDown] = useState(false)
   const pressStartRef = useRef(0)
+  // Konum modalı kapanınca, aynı dokunuş altındaki hava kartına "geçip" modalı hemen
+  // tekrar açmasın diye kısa bir koruma (iOS ghost-click). Kapanış zamanını tutar.
+  const locationClosedAtRef = useRef(0)
 
   const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
@@ -535,7 +539,7 @@ const OutfitHub: React.FC = () => {
       await addDoc(collection(db, 'outfitRequests'), payload)
       setNote('')
       setRequestItemIds([])
-      setRequestDate(dayjs())
+      setRequestDate(dayjs().add(1, 'day'))
       setWeekStart(dayjs().startOf('week').add(1, 'day'))
       message.success(
         requestType === 'weekly'
@@ -567,7 +571,11 @@ const OutfitHub: React.FC = () => {
       style={styles.weatherCard}
       bodyStyle={{ padding: 14 }}
       hoverable
-      onClick={() => setLocationOpen(true)}
+      onClick={() => {
+        // Modal yeni kapandıysa (ghost-click) tekrar açma
+        if (Date.now() - locationClosedAtRef.current < 600) return
+        setLocationOpen(true)
+      }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <span style={{ fontSize: 30 }}>{weather?.icon ?? '📍'}</span>
@@ -1032,10 +1040,14 @@ const OutfitHub: React.FC = () => {
         weekStart={weekStart}
         onDateChange={setRequestDate}
         onWeekChange={setWeekStart}
-        onClose={() => setLocationOpen(false)}
+        onClose={() => {
+          locationClosedAtRef.current = Date.now()
+          setLocationOpen(false)
+        }}
         onSave={(loc) => {
           setLocation(loc)
           setStoredLocation(loc)
+          locationClosedAtRef.current = Date.now()
           setLocationOpen(false)
         }}
       />

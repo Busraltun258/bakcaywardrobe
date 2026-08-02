@@ -6,7 +6,7 @@
 /** Liste başına alınacak öne çıkan iller — varsayılan İstanbul. */
 export const PRIMARY_CITIES = ['İstanbul', 'Mardin'] as const
 
-export const DEFAULT_LOCATION: CityDistrict = { city: 'İstanbul' }
+export const DEFAULT_LOCATION: CityDistrict = { city: 'İstanbul', district: 'Pendik' }
 
 export const TR_CITIES: { name: string; districts: string[] }[] = [
   { name: 'Adana', districts: ['Seyhan', 'Çukurova', 'Yüreğir', 'Sarıçam', 'Ceyhan'] },
