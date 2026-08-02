@@ -49,6 +49,7 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import DaySlider from '../components/DaySlider'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
@@ -1205,49 +1206,70 @@ const WeeklyView: React.FC<{
     return map
   }, [suggestions])
 
+  // İlk açılışta değerlendirilmemiş (liked=null) ilk güne konumlan, yoksa ilk gün.
+  const firstUnratedDay = WEEKDAYS.find((d) => {
+    const s = byDay[d.key]
+    return s && (s.liked === null || s.liked === undefined)
+  })?.key
+
   return (
     <div style={{ marginTop: 10 }}>
-      {WEEKDAYS.map((day) => {
-        const s = byDay[day.key]
-        return (
-          <div key={day.key} style={styles.weekDayCard}>
-            <div style={styles.weekDayHeader}>
-              <strong style={{ color: COLORS.text }}>{day.label}</strong>
-              {s ? (
-                s.liked === 'yes' ? (
-                  <Tag color="success" icon={<CheckCircleFilled />}>
-                    Beğenildi
-                  </Tag>
-                ) : s.liked === 'no' ? (
-                  <Tag color="error" icon={<CloseCircleFilled />}>
-                    Değişiklik
-                  </Tag>
+      <DaySlider
+        initialKey={firstUnratedDay}
+        days={WEEKDAYS.map((day) => {
+          const s = byDay[day.key]
+          const badge = s ? (
+            s.rating && s.rating > 0 ? (
+              <span style={{ marginLeft: 4 }}>{'⭐'.repeat(s.rating)}</span>
+            ) : s.liked === null || s.liked === undefined ? (
+              <span style={{ marginLeft: 4 }}>•</span>
+            ) : null
+          ) : null
+          return {
+            key: day.key,
+            label: day.short,
+            badge,
+            content: (
+              <div style={styles.weekDayCard}>
+                <div style={styles.weekDayHeader}>
+                  <strong style={{ color: COLORS.text }}>{day.label}</strong>
+                  {s ? (
+                    s.liked === 'yes' ? (
+                      <Tag color="success" icon={<CheckCircleFilled />}>
+                        Beğenildi
+                      </Tag>
+                    ) : s.liked === 'no' ? (
+                      <Tag color="error" icon={<CloseCircleFilled />}>
+                        Değişiklik
+                      </Tag>
+                    ) : (
+                      <Tag color="warning">Yanıt bekliyor</Tag>
+                    )
+                  ) : (
+                    <Tag>Bekliyor</Tag>
+                  )}
+                </div>
+                {s ? (
+                  <SuggestionCard
+                    suggestion={s}
+                    profileName={profileName}
+                    isAdmin={isAdmin}
+                    allClothes={allClothes}
+                    onDelete={() => onDelete(s)}
+                    onPreview={onPreview}
+                    onJumpToItem={onJumpToItem}
+                    compact
+                  />
                 ) : (
-                  <Tag color="warning">Yanıt bekliyor</Tag>
-                )
-              ) : (
-                <Tag>Bekliyor</Tag>
-              )}
-            </div>
-            {s ? (
-              <SuggestionCard
-                suggestion={s}
-                profileName={profileName}
-                isAdmin={isAdmin}
-                allClothes={allClothes}
-                onDelete={() => onDelete(s)}
-                onPreview={onPreview}
-                onJumpToItem={onJumpToItem}
-                compact
-              />
-            ) : (
-              <p style={{ fontSize: 12, color: COLORS.textMuted, margin: 0 }}>
-                Henüz öneri hazırlanmadı.
-              </p>
-            )}
-          </div>
-        )
-      })}
+                  <p style={{ fontSize: 12, color: COLORS.textMuted, margin: 0 }}>
+                    Henüz öneri hazırlanmadı.
+                  </p>
+                )}
+              </div>
+            ),
+          }
+        })}
+      />
     </div>
   )
 }

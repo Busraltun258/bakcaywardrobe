@@ -43,12 +43,20 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
+import DaySlider from '../components/DaySlider'
 import Lightbox from '../components/Lightbox'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
-import { ClothingItem, OutfitMessage, OutfitRequest, OutfitSuggestion, UserProfile } from '../types'
+import {
+  ClothingItem,
+  OutfitMessage,
+  OutfitRequest,
+  OutfitSuggestion,
+  UserProfile,
+  WEEKDAYS,
+} from '../types'
 import { clothingItemImageSrc } from '../utils/imageUtils'
 import { buildThread, sendMessageToSuggestion } from '../utils/outfitMessages'
 
@@ -455,7 +463,16 @@ const AdminHome: React.FC = () => {
                   loading={loading}
                   onPreview={(item) => setLightboxItem(item)}
                   onJumpToItem={jumpToItemUsage}
-                  onEdit={(s) => navigate(`/kombin/duzenle/${s.id}`)}
+                  onEdit={(s) => {
+                    // Haftalıksa gün-seçici ekrana git (Pzt/Sal/… hepsi tek ekranda
+                    // görülüp düzenlenebilsin); tek günlükse normal düzenleme ekranına.
+                    const r = reqCache[s.requestId]
+                    if (r?.requestType === 'weekly') {
+                      navigate(`/kombin/yanit/${r.id}`)
+                    } else {
+                      navigate(`/kombin/duzenle/${s.id}`)
+                    }
+                  }}
                   onDelete={(s) => {
                     modal.confirm({
                       title: 'Bu öneriyi silmek istediğine emin misin?',
@@ -694,51 +711,203 @@ const SuggestionsList: React.FC<{
       </Card>
     )
   }
+  // Bir günün yıldız + beğeni etiketleri (sağ üstte)
+  const tagsFor = (s: OutfitSuggestion) => {
+    const likedTag =
+      s.liked === 'yes' ? (
+        <Tag color="success" icon={<CheckCircleFilled />}>Beğenildi</Tag>
+      ) : s.liked === 'no' ? (
+        <Tag color="error" icon={<CloseCircleFilled />}>Değişiklik</Tag>
+      ) : (
+        <Tag color="warning" icon={<ClockCircleOutlined />}>Bekliyor</Tag>
+      )
+    const ratingTag =
+      s.rating && s.rating > 0 ? (
+        <span style={styles.ratingTag} title={`${s.rating} yıldız`}>
+          {'⭐'.repeat(s.rating)}
+        </span>
+      ) : null
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+        {ratingTag}
+        {likedTag}
+      </div>
+    )
+  }
+
+  // Talep üstbilgisi (hava + tarih + not) — hem tekli hem haftalıkta başta
+  const requestMeta = (r?: OutfitRequest) => (
+    <>
+      {r?.weather && (
+        <div style={styles.metaPill}>
+          {r.weather.icon} {r.weather.temp}°C · {r.weather.description}
+          {r.weather.city && (
+            <> · 📍 {r.weather.district ? `${r.weather.district}, ` : ''}{r.weather.city}</>
+          )}
+        </div>
+      )}
+      {r && (
+        <div style={styles.dateBlock}>
+          <div style={styles.dateLine}>
+            <span style={styles.dateLabelTxt}>📤 Talep edildi:</span>
+            <span style={styles.dateValTxt}>
+              {dayjs(r.createdAt).format('DD MMM YYYY · HH:mm')}
+            </span>
+          </div>
+          {(r.requestDate || r.weekStartDate) && (
+            <div style={styles.dateLine}>
+              <span style={styles.dateLabelTxt}>👕 Giyilecek:</span>
+              <span style={{ ...styles.dateValTxt, color: COLORS.primary, fontWeight: 600 }}>
+                {r.requestType === 'weekly'
+                  ? `${dayjs(r.weekStartDate).format('DD MMM')} - ${dayjs(r.weekStartDate).add(4, 'day').format('DD MMM')}`
+                  : dayjs(r.requestDate).format('DD MMMM YYYY, dddd')}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {r?.note && (
+        <p style={styles.requestNote}>
+          <strong style={{ color: COLORS.text }}>Talep notu:</strong>{' '}
+          <em>"{r.note}"</em>
+        </p>
+      )}
+    </>
+  )
+
+  // Bir günün parçaları + mesaj thread'i
+  const dayBody = (s: OutfitSuggestion, who: string) => (
+    <>
+      <div style={styles.suggThumbs}>
+        {(s.clothingItemIds ?? []).map((id) => {
+          const c = clothesCache[id]
+          if (!c) {
+            return (
+              <div key={id} style={styles.thumbCol}>
+                <div className="skeleton" style={{ width: 72, height: 72, borderRadius: 10 }} />
+              </div>
+            )
+          }
+          const labelText = c.label || c.description
+          const showJump = c.category !== 'aksesuar' && c.category !== 'ayakkabi'
+          return (
+            <div key={id} style={{ ...styles.thumbCol, position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => onPreview(c)}
+                style={styles.thumbBtn}
+                aria-label="Görseli büyüt"
+              >
+                <SmartImage
+                  cacheKey={c.id}
+                  src={clothingItemImageSrc(c)}
+                  style={{ width: 72, height: 72, borderRadius: 10 }}
+                />
+              </button>
+              {showJump && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onJumpToItem(id, s.id)
+                  }}
+                  style={styles.jumpArrow}
+                  title="Bu parçanın en son kullanıldığı kombine git"
+                  aria-label="En son kullanıldığı kombine git"
+                >
+                  <ArrowDownOutlined style={{ fontSize: 10 }} />
+                </button>
+              )}
+              {labelText && <span style={styles.thumbLabel}>{labelText}</span>}
+            </div>
+          )
+        })}
+      </div>
+      <SuggestionThread s={s} who={who} advisorUid={advisorUid} profileName={profileName} />
+    </>
+  )
+
+  // Grupla: haftalık talepler TEK kart (gün slider'ı), diğerleri tekli kart.
+  type Item =
+    | { type: 'single'; s: OutfitSuggestion; r?: OutfitRequest }
+    | { type: 'weekly'; r: OutfitRequest; days: OutfitSuggestion[] }
+  const items: Item[] = []
+  const seen = new Set<string>()
+  rows.forEach(({ s, r }) => {
+    if (r?.requestType === 'weekly') {
+      if (seen.has(r.id)) return
+      seen.add(r.id)
+      const days = rows
+        .filter((x) => x.r?.id === r.id)
+        .map((x) => x.s)
+        .sort((a, b) => (a.dayIndex ?? 0) - (b.dayIndex ?? 0))
+      items.push({ type: 'weekly', r, days })
+    } else {
+      items.push({ type: 'single', s, r })
+    }
+  })
+
   return (
     <Row gutter={[12, 12]} align="stretch">
-      {rows.map(({ s, r }) => {
-        const who = r ? profileName(r.fromUid) : '...'
-        const likedTag =
-          s.liked === 'yes' ? (
-            <Tag color="success" icon={<CheckCircleFilled />}>
-              Beğenildi
-            </Tag>
-          ) : s.liked === 'no' ? (
-            <Tag color="error" icon={<CloseCircleFilled />}>
-              Değişiklik
-            </Tag>
-          ) : (
-            <Tag color="warning" icon={<ClockCircleOutlined />}>
-              Bekliyor
-            </Tag>
+      {items.map((item) => {
+        if (item.type === 'single') {
+          const { s, r } = item
+          const who = r ? profileName(r.fromUid) : '...'
+          return (
+            <Col xs={24} md={12} key={s.id} id={`suggestion-${s.id}`} style={{ display: 'flex' }}>
+              <Card
+                style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
+                styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
+                actions={[
+                  <Button key="e" type="primary" icon={<EditOutlined />} onClick={() => onEdit(s)}>
+                    Düzenle
+                  </Button>,
+                  <Button key="d" danger type="text" icon={<DeleteOutlined />} onClick={() => onDelete(s)} />,
+                ]}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <Avatar size={36} style={{ background: COLORS.gradient }}>
+                    {who[0]?.toUpperCase()}
+                  </Avatar>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: COLORS.text }}>{who}</div>
+                  </div>
+                  {tagsFor(s)}
+                </div>
+                {requestMeta(r)}
+                {dayBody(s, who)}
+                <div style={{ flex: 1 }} />
+              </Card>
+            </Col>
           )
-        const ratingTag =
-          s.rating && s.rating > 0 ? (
-            <span style={styles.ratingTag} title={`${s.rating} yıldız`}>
-              {'⭐'.repeat(s.rating)}
-            </span>
-          ) : null
+        }
+
+        // Haftalık: tek kart + gün slider'ı
+        const { r, days } = item
+        const who = profileName(r.fromUid)
+        const byDay: Record<number, OutfitSuggestion> = {}
+        days.forEach((d) => {
+          byDay[d.dayIndex ?? 0] = d
+        })
+        const ratedCount = days.filter((d) => d.rating && d.rating > 0).length
+        const firstUnrated = WEEKDAYS.find((wd) => {
+          const d = byDay[wd.key]
+          return d && (d.liked === null || d.liked === undefined)
+        })?.key
         return (
-          <Col xs={24} md={12} key={s.id} id={`suggestion-${s.id}`} style={{ display: 'flex' }}>
+          <Col xs={24} md={12} key={r.id} style={{ display: 'flex' }}>
             <Card
               style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
-              bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+              styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
               actions={[
                 <Button
                   key="e"
                   type="primary"
                   icon={<EditOutlined />}
-                  onClick={() => onEdit(s)}
+                  onClick={() => days[0] && onEdit(days[0])}
                 >
-                  Düzenle
+                  Günleri Düzenle
                 </Button>,
-                <Button
-                  key="d"
-                  danger
-                  type="text"
-                  icon={<DeleteOutlined />}
-                  onClick={() => onDelete(s)}
-                />,
               ]}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -747,103 +916,56 @@ const SuggestionsList: React.FC<{
                 </Avatar>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, color: COLORS.text }}>{who}</div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>Haftalık · 5 gün</div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  {ratingTag}
-                  {likedTag}
-                </div>
+                <Tag color="purple">{days.length}/5 gün</Tag>
               </div>
-
-              {r?.weather && (
-                <div style={styles.metaPill}>
-                  {r.weather.icon} {r.weather.temp}°C · {r.weather.description}
-                  {r.weather.city && (
-                    <> · 📍 {r.weather.district ? `${r.weather.district}, ` : ''}{r.weather.city}</>
-                  )}
-                </div>
-              )}
-              {r && (
-                <div style={styles.dateBlock}>
-                  <div style={styles.dateLine}>
-                    <span style={styles.dateLabelTxt}>📤 Talep edildi:</span>
-                    <span style={styles.dateValTxt}>
-                      {dayjs(r.createdAt).format('DD MMM YYYY · HH:mm')}
-                    </span>
-                  </div>
-                  {(r.requestDate || r.weekStartDate) && (
-                    <div style={styles.dateLine}>
-                      <span style={styles.dateLabelTxt}>👕 Giyilecek:</span>
-                      <span style={{ ...styles.dateValTxt, color: COLORS.primary, fontWeight: 600 }}>
-                        {r.requestType === 'weekly'
-                          ? `${dayjs(r.weekStartDate).format('DD MMM')} - ${dayjs(r.weekStartDate).add(4, 'day').format('DD MMM')}`
-                          : dayjs(r.requestDate).format('DD MMMM YYYY, dddd')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {r?.note && (
-                <p style={styles.requestNote}>
-                  <strong style={{ color: COLORS.text }}>Talep notu:</strong>{' '}
-                  <em>"{r.note}"</em>
-                </p>
-              )}
-
-              <div style={styles.suggThumbs}>
-                {(s.clothingItemIds ?? []).map((id) => {
-                  const c = clothesCache[id]
-                  if (!c) {
-                    return (
-                      <div key={id} style={styles.thumbCol}>
-                        <div
-                          className="skeleton"
-                          style={{ width: 72, height: 72, borderRadius: 10 }}
-                        />
+              {requestMeta(r)}
+              <DaySlider
+                initialKey={firstUnrated}
+                days={WEEKDAYS.map((wd) => {
+                  const s = byDay[wd.key]
+                  const badge = s
+                    ? s.rating && s.rating > 0
+                      ? <span style={{ marginLeft: 4 }}>{'⭐'.repeat(s.rating)}</span>
+                      : s.liked === null || s.liked === undefined
+                      ? <span style={{ marginLeft: 4 }}>•</span>
+                      : null
+                    : null
+                  return {
+                    key: wd.key,
+                    label: wd.short,
+                    badge,
+                    content: s ? (
+                      <div id={`suggestion-${s.id}`}>
+                        <div style={styles.weekDaySlideHead}>
+                          <strong style={{ color: COLORS.text }}>{wd.label}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {tagsFor(s)}
+                            <Button
+                              danger
+                              type="text"
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              onClick={() => onDelete(s)}
+                              title="Bu günü sil"
+                            />
+                          </div>
+                        </div>
+                        {dayBody(s, who)}
                       </div>
-                    )
+                    ) : (
+                      <div style={{ padding: '10px 2px', color: COLORS.textMuted, fontSize: 13 }}>
+                        <strong style={{ color: COLORS.textSecondary }}>{wd.label}:</strong> henüz
+                        hazırlanmadı — "Günleri Düzenle" ile ekleyebilirsin.
+                      </div>
+                    ),
                   }
-                  const labelText = c.label || c.description
-                  const showJump = c.category !== 'aksesuar' && c.category !== 'ayakkabi'
-                  return (
-                    <div key={id} style={{ ...styles.thumbCol, position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => onPreview(c)}
-                        style={styles.thumbBtn}
-                        aria-label="Görseli büyüt"
-                      >
-                        <SmartImage
-                          cacheKey={c.id}
-                          src={clothingItemImageSrc(c)}
-                          style={{ width: 72, height: 72, borderRadius: 10 }}
-                        />
-                      </button>
-                      {showJump && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onJumpToItem(id, s.id)
-                          }}
-                          style={styles.jumpArrow}
-                          title="Bu parçanın en son kullanıldığı kombine git"
-                          aria-label="En son kullanıldığı kombine git"
-                        >
-                          <ArrowDownOutlined style={{ fontSize: 10 }} />
-                        </button>
-                      )}
-                      {labelText && <span style={styles.thumbLabel}>{labelText}</span>}
-                    </div>
-                  )
                 })}
-              </div>
-
-              <SuggestionThread
-                s={s}
-                who={who}
-                advisorUid={advisorUid}
-                profileName={profileName}
               />
+              <div style={{ marginTop: 4, fontSize: 11, color: COLORS.textMuted }}>
+                {ratedCount}/5 gün puanlandı
+              </div>
               <div style={{ flex: 1 }} />
             </Card>
           </Col>
@@ -1063,6 +1185,13 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     background: COLORS.bgCard,
     border: `1px solid ${COLORS.border}`,
+  },
+  weekDaySlideHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
   },
   suggThumbs: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   thumbCol: {

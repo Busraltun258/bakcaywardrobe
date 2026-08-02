@@ -297,6 +297,8 @@ const RespondOutfit: React.FC = () => {
           saved = { id: ref.id, ...payload } as OutfitSuggestion
         }
 
+        // Kaydetmeden önce hafta zaten tamam mıydı? (düzenleme mi, doldurma mı)
+        const wasComplete = WEEKDAYS.every((_, i) => !!existingByDayRef.current[i])
         const newMap = { ...existingByDayRef.current, [dayIndex]: saved }
         existingByDayRef.current = newMap
         setExistingByDay(newMap)
@@ -309,13 +311,16 @@ const RespondOutfit: React.FC = () => {
         }
         message.success(`${WEEKDAYS[dayIndex].label} kaydedildi`)
 
-        if (allDone) {
-          navigate(backPath, { replace: true })
-        } else {
-          // Bir sonraki BOŞ güne geç (efekt seçimi temizler)
+        if (!allDone) {
+          // Hâlâ boş gün var → bir sonraki boş güne geç (efekt seçimi temizler)
           const nextMissing = WEEKDAYS.findIndex((_, i) => !newMap[i])
           setDayIndex(nextMissing === -1 ? dayIndex : nextMissing)
+        } else if (!wasComplete) {
+          // Son boş gün de dolduruldu → hafta tamamlandı, geri dön
+          navigate(backPath, { replace: true })
         }
+        // Zaten tamam olan bir haftayı düzenliyorsa: ekranda kal ki başka günü de
+        // seçip düzenleyebilsin (gün gün aynı ekranda).
       } else {
         const payload: Record<string, unknown> = {
           requestId: req.id,
