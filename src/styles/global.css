@@ -279,6 +279,13 @@ button, .ant-btn, .ant-segmented-item, .ant-tabs-tab {
   right: 0;
   z-index: 60;
   pointer-events: none;
+  /* iOS: fixed + backdrop-filter kaydırmada ekranı zıplatıyor. Kendi GPU katmanına
+     sabitleyince (translateZ) yerinde kalıyor, scroll'da yukarı atmıyor. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 .bk-sticky-submit > * {
   pointer-events: auto;

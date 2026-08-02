@@ -46,6 +46,7 @@ import {
   OCCASIONS,
   OutfitDraft,
   OutfitRequest,
+  OutfitSuggestion,
   SEASONS,
   Season,
   WEEKDAYS,
@@ -80,6 +81,10 @@ const RespondOutfit: React.FC = () => {
   // Haftalık talep için: hangi günü dolduruyor
   const isWeekly = req?.requestType === 'weekly'
   const [dayIndex, setDayIndex] = useState<number>(0)
+  // Haftalıkta zaten kaydedilmiş günler (dayIndex → o günün önerisi). Devam edebilmek için.
+  const [existingByDay, setExistingByDay] = useState<Record<number, OutfitSuggestion>>({})
+  const existingByDayRef = useRef<Record<number, OutfitSuggestion>>({})
+  const initialDaySet = useRef(false)
 
   // Taslak desteği
   const [drafts, setDrafts] = useState<OutfitDraft[]>([])
@@ -145,10 +150,46 @@ const RespondOutfit: React.FC = () => {
   const prefilledSel = useRef(false)
   useEffect(() => {
     if (prefilledSel.current || !req) return
+    // Haftalıkta seçim gün bazlı yükleniyor (aşağıdaki efekt), burada dokunma.
+    if (req.requestType === 'weekly') return
     prefilledSel.current = true
     const ids = req.requestedItemIds ?? []
     if (ids.length > 0) setSelected(new Set(ids))
   }, [req])
+
+  // Haftalık: bu talebe daha önce kaydedilmiş günleri yükle, ilk BOŞ güne konumlan.
+  useEffect(() => {
+    if (!req || req.requestType !== 'weekly') return
+    ;(async () => {
+      const q = query(collection(db, 'outfitSuggestions'), where('requestId', '==', req.id))
+      const snap = await getDocs(q)
+      const map: Record<number, OutfitSuggestion> = {}
+      snap.docs.forEach((d) => {
+        const s = { id: d.id, ...d.data() } as OutfitSuggestion
+        map[s.dayIndex ?? 0] = s
+      })
+      existingByDayRef.current = map
+      setExistingByDay(map)
+      if (!initialDaySet.current) {
+        initialDaySet.current = true
+        const firstMissing = WEEKDAYS.findIndex((_, i) => !map[i])
+        setDayIndex(firstMissing === -1 ? 0 : firstMissing)
+      }
+    })()
+  }, [req?.id])
+
+  // Haftalıkta gün değişince o günün (varsa) kayıtlı kombinini forma yükle, yoksa temizle.
+  useEffect(() => {
+    if (!isWeekly) return
+    const ex = existingByDay[dayIndex]
+    if (ex) {
+      setSelected(new Set(ex.clothingItemIds))
+      setNote(ex.advisorNote ?? '')
+    } else {
+      setSelected(new Set())
+      setNote('')
+    }
+  }, [dayIndex, isWeekly, existingByDay])
 
   // Bu kullanıcı için hazırlanmış taslakları çek (admin için)
   useEffect(() => {
@@ -220,39 +261,79 @@ const RespondOutfit: React.FC = () => {
     try {
       const now = Date.now()
       const trimmedNote = note.trim()
-      const payload: Record<string, unknown> = {
-        requestId: req.id,
-        requesterUid: req.fromUid,
-        advisorUid: user.uid,
-        clothingItemIds: Array.from(selected),
-        advisorNote: trimmedNote,
-        createdAt: now,
-        liked: null,
-        comment: '',
-        feedbackAt: null,
-        // Mesaj geçmişini stilistin ilk notuyla başlat (varsa)
-        messages: trimmedNote
-          ? [{ role: 'advisor', uid: user.uid, text: trimmedNote, at: now }]
-          : [],
-      }
-      if (isWeekly) payload.dayIndex = dayIndex
-
-      await addDoc(collection(db, 'outfitSuggestions'), payload)
-
-      // Haftalık için her gün eklendikçe status 'answered' yapma, son gün geldikçe
-      // user görsün diye yapıyoruz ama tek tek de görür. Mantıklı: ilk öneriyle answered.
-      if (!isWeekly || req.status !== 'answered') {
-        await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
-      }
-      message.success(isWeekly ? `${WEEKDAYS[dayIndex].label} kaydedildi` : 'Öneri gönderildi!')
 
       if (isWeekly) {
-        // Haftalık: bir sonraki güne geç, seçimi temizle
-        setSelected(new Set())
-        setNote('')
-        if (dayIndex < WEEKDAYS.length - 1) setDayIndex(dayIndex + 1)
-        else navigate(backPath, { replace: true })
+        // Bu gün daha önce kaydedilmişse GÜNCELLE, yoksa yeni oluştur (mükerrer olmasın).
+        const existing = existingByDayRef.current[dayIndex]
+        let saved: OutfitSuggestion
+        if (existing) {
+          await updateDoc(doc(db, 'outfitSuggestions', existing.id), {
+            clothingItemIds: Array.from(selected),
+            advisorNote: trimmedNote,
+            liked: null,
+            rating: 0,
+            comment: '',
+            feedbackAt: null,
+            editedAt: now,
+          })
+          saved = { ...existing, clothingItemIds: Array.from(selected), advisorNote: trimmedNote }
+        } else {
+          const payload = {
+            requestId: req.id,
+            requesterUid: req.fromUid,
+            advisorUid: user.uid,
+            clothingItemIds: Array.from(selected),
+            advisorNote: trimmedNote,
+            createdAt: now,
+            liked: null,
+            comment: '',
+            feedbackAt: null,
+            dayIndex,
+            messages: trimmedNote
+              ? [{ role: 'advisor', uid: user.uid, text: trimmedNote, at: now }]
+              : [],
+          }
+          const ref = await addDoc(collection(db, 'outfitSuggestions'), payload)
+          saved = { id: ref.id, ...payload } as OutfitSuggestion
+        }
+
+        const newMap = { ...existingByDayRef.current, [dayIndex]: saved }
+        existingByDayRef.current = newMap
+        setExistingByDay(newMap)
+
+        // Talebi ancak 5 günün TAMAMI hazır olunca "answered" yap — yoksa "pending"
+        // kalsın ki Büşra'nın gelen isteklerinde durup kalan günleri ekleyebilsin.
+        const allDone = WEEKDAYS.every((_, i) => !!newMap[i])
+        if (allDone && req.status !== 'answered') {
+          await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
+        }
+        message.success(`${WEEKDAYS[dayIndex].label} kaydedildi`)
+
+        if (allDone) {
+          navigate(backPath, { replace: true })
+        } else {
+          // Bir sonraki BOŞ güne geç (efekt seçimi temizler)
+          const nextMissing = WEEKDAYS.findIndex((_, i) => !newMap[i])
+          setDayIndex(nextMissing === -1 ? dayIndex : nextMissing)
+        }
       } else {
+        const payload: Record<string, unknown> = {
+          requestId: req.id,
+          requesterUid: req.fromUid,
+          advisorUid: user.uid,
+          clothingItemIds: Array.from(selected),
+          advisorNote: trimmedNote,
+          createdAt: now,
+          liked: null,
+          comment: '',
+          feedbackAt: null,
+          messages: trimmedNote
+            ? [{ role: 'advisor', uid: user.uid, text: trimmedNote, at: now }]
+            : [],
+        }
+        await addDoc(collection(db, 'outfitSuggestions'), payload)
+        await updateDoc(doc(db, 'outfitRequests', req.id), { status: 'answered' })
+        message.success('Öneri gönderildi!')
         navigate(backPath, { replace: true })
       }
     } catch (e) {
@@ -369,10 +450,23 @@ const RespondOutfit: React.FC = () => {
         {/* Haftalık ise gün seçici */}
         {isWeekly && (
           <Card style={{ marginBottom: 14 }} bodyStyle={{ padding: 14 }}>
-            <p style={{ margin: '0 0 10px', color: COLORS.textSecondary, fontSize: 13 }}>
-              <CalendarOutlined style={{ marginRight: 6 }} />
-              Şu an hazırladığın gün:
-            </p>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 10,
+              }}
+            >
+              <span style={{ color: COLORS.textSecondary, fontSize: 13 }}>
+                <CalendarOutlined style={{ marginRight: 6 }} />
+                Şu an hazırladığın gün:
+              </span>
+              <Tag color={Object.keys(existingByDay).length === WEEKDAYS.length ? 'success' : 'warning'}>
+                {Object.keys(existingByDay).length}/{WEEKDAYS.length} gün hazır
+              </Tag>
+            </div>
             <Radio.Group
               value={dayIndex}
               onChange={(e) => setDayIndex(e.target.value)}
@@ -382,9 +476,13 @@ const RespondOutfit: React.FC = () => {
               {WEEKDAYS.map((d) => (
                 <Radio.Button key={d.key} value={d.key}>
                   {d.short}
+                  {existingByDay[d.key] ? ' ✓' : ''}
                 </Radio.Button>
               ))}
             </Radio.Group>
+            <p style={{ margin: '10px 0 0', fontSize: 12, color: COLORS.textMuted }}>
+              ✓ işaretli günler hazır — tıklayıp düzenleyebilir, boş günleri tamamlayabilirsin.
+            </p>
           </Card>
         )}
 
@@ -558,9 +656,9 @@ const RespondOutfit: React.FC = () => {
           {saving
             ? 'Gönderiliyor…'
             : isWeekly
-            ? dayIndex === WEEKDAYS.length - 1
-              ? 'Son Günü Gönder'
-              : `${WEEKDAYS[dayIndex].label}'yi Kaydet`
+            ? existingByDay[dayIndex]
+              ? `${WEEKDAYS[dayIndex].label} Güncelle`
+              : `${WEEKDAYS[dayIndex].label} Kaydet`
             : 'Öneriyi Gönder'}
         </Button>
       </StickySubmitBar>

@@ -212,6 +212,25 @@ const AdminHome: React.FC = () => {
     return suggestions.map((s) => ({ s, r: reqCache[s.requestId] }))
   }, [suggestions, reqCache])
 
+  // Yarım kalan haftalık istekler: 5 günün hepsi doldurulmamış ama "Gelen İstekler"de
+  // (pending) görünmeyenler. Büşra buradan devam edip kalan günleri ekleyebilsin.
+  const incompleteWeekly = useMemo(() => {
+    const pendingIds = new Set(pendingRequests.map((r) => r.id))
+    const byReq: Record<string, Set<number>> = {}
+    suggestions.forEach((s) => {
+      const r = reqCache[s.requestId]
+      if (!r || r.requestType !== 'weekly') return
+      ;(byReq[s.requestId] ??= new Set()).add(s.dayIndex ?? 0)
+    })
+    const out: { r: OutfitRequest; done: number }[] = []
+    Object.entries(byReq).forEach(([rid, days]) => {
+      if (days.size >= 5 || pendingIds.has(rid)) return
+      const r = reqCache[rid]
+      if (r) out.push({ r, done: days.size })
+    })
+    return out.sort((a, b) => (b.r.createdAt ?? 0) - (a.r.createdAt ?? 0))
+  }, [suggestions, reqCache, pendingRequests])
+
   // Önerilerde arama: kullanıcı adı, talep notu, stilist notu/mesajlar, parça etiket/açıklama
   const filteredRows = useMemo(() => {
     const term = suggSearch.trim().toLowerCase()
@@ -343,29 +362,69 @@ const AdminHome: React.FC = () => {
                 </span>
               ),
               children: (
-                <IncomingRequestsList
-                  requests={pendingRequests}
-                  profileName={profileName}
-                  clothesCache={clothesCache}
-                  onRespond={(r) => navigate(`/kombin/yanit/${r.id}`)}
-                  onDelete={(r) => {
-                    modal.confirm({
-                      title: 'Bu talebi silmek istediğine emin misin?',
-                      okText: 'Sil',
-                      okType: 'danger',
-                      cancelText: 'Vazgeç',
-                      centered: true,
-                      onOk: async () => {
-                        try {
-                          await deleteDoc(doc(db, 'outfitRequests', r.id))
-                          message.success('Silindi')
-                        } catch {
-                          message.error('Silinemedi')
-                        }
-                      },
-                    })
-                  }}
-                />
+                <>
+                  {incompleteWeekly.length > 0 && (
+                    <Card
+                      style={{ marginBottom: 12, background: 'rgba(250,173,20,0.06)' }}
+                      styles={{ body: { padding: 14 } }}
+                    >
+                      <div style={{ fontWeight: 600, color: COLORS.text, marginBottom: 4 }}>
+                        ⏳ Yarım kalan haftalık istekler
+                      </div>
+                      <p style={{ margin: '0 0 10px', fontSize: 12, color: COLORS.textMuted }}>
+                        Bu haftalık isteklerin bazı günleri eksik — devam edip tamamla.
+                      </p>
+                      {incompleteWeekly.map(({ r, done }) => (
+                        <div key={r.id} style={styles.incompleteRow}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ color: COLORS.text, fontWeight: 600 }}>
+                              {profileName(r.fromUid)}
+                            </span>
+                            <span style={{ color: COLORS.textMuted, fontSize: 12, marginLeft: 8 }}>
+                              {r.weekStartDate
+                                ? `${dayjs(r.weekStartDate).format('DD MMM')} haftası`
+                                : ''}
+                            </span>
+                            <Tag color="warning" style={{ marginLeft: 8 }}>
+                              {done}/5 gün
+                            </Tag>
+                          </div>
+                          <Button
+                            type="primary"
+                            size="small"
+                            icon={<ThunderboltOutlined />}
+                            onClick={() => navigate(`/kombin/yanit/${r.id}`)}
+                          >
+                            Kalan günleri ekle
+                          </Button>
+                        </div>
+                      ))}
+                    </Card>
+                  )}
+                  <IncomingRequestsList
+                    requests={pendingRequests}
+                    profileName={profileName}
+                    clothesCache={clothesCache}
+                    onRespond={(r) => navigate(`/kombin/yanit/${r.id}`)}
+                    onDelete={(r) => {
+                      modal.confirm({
+                        title: 'Bu talebi silmek istediğine emin misin?',
+                        okText: 'Sil',
+                        okType: 'danger',
+                        cancelText: 'Vazgeç',
+                        centered: true,
+                        onOk: async () => {
+                          try {
+                            await deleteDoc(doc(db, 'outfitRequests', r.id))
+                            message.success('Silindi')
+                          } catch {
+                            message.error('Silinemedi')
+                          }
+                        },
+                      })
+                    }}
+                  />
+                </>
               ),
             },
             {
@@ -873,6 +932,14 @@ const SuggestionThread: React.FC<{
 
 const styles: Record<string, React.CSSProperties> = {
   hero: { padding: '4px 0 16px' },
+  incompleteRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 0',
+    borderTop: `1px solid ${COLORS.border}`,
+    flexWrap: 'wrap' as const,
+  },
   heroTitle: {
     margin: 0,
     fontSize: 28,
