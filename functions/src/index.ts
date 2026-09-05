@@ -1,12 +1,15 @@
 import * as admin from 'firebase-admin'
+import { getFirestore } from 'firebase-admin/firestore'
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
 
 admin.initializeApp()
 
+const db = getFirestore(admin.app())
+
 /** Bir kullanıcının görünen adını döndürür (bildirim metni için). */
 async function getName(uid: string): Promise<string> {
   try {
-    const snap = await admin.firestore().doc(`profiles/${uid}`).get()
+    const snap = await db.doc(`profiles/${uid}`).get()
     const d = snap.data() ?? {}
     return (d.displayName as string) || (d.username as string) || 'Biri'
   } catch {
@@ -20,7 +23,7 @@ async function getName(uid: string): Promise<string> {
  * birleşik döner. Geri uyumluluk için ikisi de destekleniyor.
  */
 async function getUserTokens(uid: string): Promise<string[]> {
-  const snap = await admin.firestore().doc(`profiles/${uid}`).get()
+  const snap = await db.doc(`profiles/${uid}`).get()
   const data = snap.data() ?? {}
   const tokens = new Set<string>()
   if (Array.isArray(data.fcmTokens)) {
@@ -83,7 +86,7 @@ async function sendToUser(
 
   if (stale.length > 0) {
     console.info(`[notif] ${stale.length} eski token temizleniyor`)
-    const ref = admin.firestore().doc(`profiles/${uid}`)
+    const ref = db.doc(`profiles/${uid}`)
     const update: Record<string, unknown> = {
       fcmTokens: admin.firestore.FieldValue.arrayRemove(...stale),
     }

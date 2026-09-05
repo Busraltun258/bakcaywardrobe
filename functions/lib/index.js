@@ -35,13 +35,15 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.onOneriGuncelleme = exports.onYeniTalep = exports.onYeniOneri = void 0;
 const admin = __importStar(require("firebase-admin"));
-const firestore_1 = require("firebase-functions/v2/firestore");
+const firestore_1 = require("firebase-admin/firestore");
+const firestore_2 = require("firebase-functions/v2/firestore");
 admin.initializeApp();
+const db = (0, firestore_1.getFirestore)(admin.app());
 /** Bir kullanıcının görünen adını döndürür (bildirim metni için). */
 async function getName(uid) {
     var _a;
     try {
-        const snap = await admin.firestore().doc(`profiles/${uid}`).get();
+        const snap = await db.doc(`profiles/${uid}`).get();
         const d = (_a = snap.data()) !== null && _a !== void 0 ? _a : {};
         return d.displayName || d.username || 'Biri';
     }
@@ -56,7 +58,7 @@ async function getName(uid) {
  */
 async function getUserTokens(uid) {
     var _a;
-    const snap = await admin.firestore().doc(`profiles/${uid}`).get();
+    const snap = await db.doc(`profiles/${uid}`).get();
     const data = (_a = snap.data()) !== null && _a !== void 0 ? _a : {};
     const tokens = new Set();
     if (Array.isArray(data.fcmTokens)) {
@@ -110,7 +112,7 @@ async function sendToUser(uid, payload) {
     });
     if (stale.length > 0) {
         console.info(`[notif] ${stale.length} eski token temizleniyor`);
-        const ref = admin.firestore().doc(`profiles/${uid}`);
+        const ref = db.doc(`profiles/${uid}`);
         const update = {
             fcmTokens: admin.firestore.FieldValue.arrayRemove(...stale),
         };
@@ -126,7 +128,7 @@ async function sendToUser(uid, payload) {
 /**
  * Yeni kombin önerisi oluştuğunda isteği gönderen kullanıcının TÜM cihazlarına bildirim at.
  */
-exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid}', async (event) => {
+exports.onYeniOneri = (0, firestore_2.onDocumentCreated)('outfitSuggestions/{sid}', async (event) => {
     var _a, _b, _c;
     const oneri = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
     if (!(oneri === null || oneri === void 0 ? void 0 : oneri.requesterUid))
@@ -145,7 +147,7 @@ exports.onYeniOneri = (0, firestore_1.onDocumentCreated)('outfitSuggestions/{sid
 /**
  * Yeni talep oluştuğunda stilistin TÜM cihazlarına bildirim at.
  */
-exports.onYeniTalep = (0, firestore_1.onDocumentCreated)('outfitRequests/{rid}', async (event) => {
+exports.onYeniTalep = (0, firestore_2.onDocumentCreated)('outfitRequests/{rid}', async (event) => {
     var _a, _b;
     const talep = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
     if (!(talep === null || talep === void 0 ? void 0 : talep.toUid))
@@ -173,7 +175,7 @@ exports.onYeniTalep = (0, firestore_1.onDocumentCreated)('outfitRequests/{rid}',
  * Not: Yalnızca 'liked' değişen güncellemeler (ör. otomatik onarım, "tümünü gördüm")
  * bilinçli olarak bildirim üretmez.
  */
-exports.onOneriGuncelleme = (0, firestore_1.onDocumentUpdated)('outfitSuggestions/{sid}', async (event) => {
+exports.onOneriGuncelleme = (0, firestore_2.onDocumentUpdated)('outfitSuggestions/{sid}', async (event) => {
     var _a, _b, _c, _d, _e, _f, _g;
     const before = (_a = event.data) === null || _a === void 0 ? void 0 : _a.before.data();
     const after = (_b = event.data) === null || _b === void 0 ? void 0 : _b.after.data();
