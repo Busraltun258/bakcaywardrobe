@@ -5,9 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import { db, messagingPromise } from '../firebase'
 
 // Firebase Console → Project Settings → Cloud Messaging → "Web configuration"
-// Web Push certificates → "Current pair" public key (20 Tem 2026)
+// Web Push certificates → Key pair public key (bakcaywardrobe projesi)
 const VAPID_KEY =
-  'BIb3fkM-0H_rqXG0EvhCxJlyOJqiihq_DOD0zBbZUgwGBkNlnRyjw6uJsyKImO_0H_ZSIJsddZVFgAmS_VPQE-g'
+  'BMBCCu_stH8y2mUHcHfLMDyhlBqqakl3e1oObBgpA3SGXaIBlOCRptHNZuz-ez-O8rsNNchy_TgL22NFT_cd0jo'
 
 // Token gerçekten alınıp profile yazıldığında set edilir. Banner'ın gizlenip
 // gizlenmeyeceğine bu belirler — izin "granted" olsa bile token yoksa banner kalır.
