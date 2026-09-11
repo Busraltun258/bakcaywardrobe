@@ -12,7 +12,6 @@ import AdminHome from './pages/AdminHome'
 import CategoryDetail from './pages/CategoryDetail'
 import EditSuggestion from './pages/EditSuggestion'
 import Login from './pages/Login'
-import BusraChat from './pages/BusraChat'
 import OutfitHub from './pages/OutfitHub'
 import RespondOutfit from './pages/RespondOutfit'
 import Wardrobe from './pages/Wardrobe'
@@ -82,14 +81,6 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <Stats />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/busra"
-        element={
-          <RequireAuth>
-            <BusraChat />
           </RequireAuth>
         }
       />
