@@ -45,11 +45,17 @@ const TripMode: React.FC = () => {
   const [kamMsg, setKamMsg] = useState('')
   const [askOpen, setAskOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [minimized, setMinimized] = useState(false)
 
   useEffect(() => {
     if (!user) return
     return onSnapshot(TRIP_REF(), (snap) => setTrip((snap.data() as TripState) ?? {}))
   }, [user])
+
+  // Trip kapanınca (Büşra barışınca) küçültme durumunu sıfırla
+  useEffect(() => {
+    if (trip?.active !== true) setMinimized(false)
+  }, [trip?.active])
 
   if (!user || !trip) return null
   const active = trip.active === true
@@ -168,9 +174,22 @@ const TripMode: React.FC = () => {
 
   // ===== KAMURAN (non-admin) =====
   if (!active) return null
+
+  // Küçültülmüşse: sadece küçük bir hatırlatma balonu (uygulamayı kullanabilsin)
+  if (minimized) {
+    return (
+      <button type="button" style={styles.kamPill} onClick={() => setMinimized(false)}>
+        😤 Büşra küskün — gönlünü al 🥺
+      </button>
+    )
+  }
+
   return (
     <div style={styles.kamWrap}>
       <div style={styles.kamCard}>
+        <button type="button" style={styles.kamClose} onClick={() => setMinimized(true)} title="Şimdilik kapat">
+          ✕
+        </button>
         <div style={{ fontSize: 34 }}>😤💔</div>
         <div style={styles.kamTitle}>Büşra sana trip attı</div>
         {trip.note ? <div style={styles.kamNote}>“{trip.note}”</div> : null}
@@ -249,7 +268,39 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitBackdropFilter: 'blur(6px)',
     overflowY: 'auto',
   },
+  kamClose: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    border: `1px solid ${COLORS.border}`,
+    background: 'rgba(255,255,255,0.06)',
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  kamPill: {
+    position: 'fixed',
+    top: 'calc(env(safe-area-inset-top,0px) + 66px)',
+    left: 12,
+    right: 12,
+    margin: '0 auto',
+    maxWidth: 420,
+    zIndex: 4500,
+    padding: '10px 14px',
+    borderRadius: 999,
+    border: '1px solid rgba(244,114,182,0.4)',
+    background: 'rgba(244,114,182,0.18)',
+    color: COLORS.text,
+    fontWeight: 600,
+    fontSize: 13,
+    cursor: 'pointer',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+  },
   kamCard: {
+    position: 'relative',
     width: '100%',
     maxWidth: 420,
     background: COLORS.bgCard,
