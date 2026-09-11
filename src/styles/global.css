@@ -400,3 +400,23 @@ button, .ant-btn, .ant-segmented-item, .ant-tabs-tab {
   from { opacity: 0; transform: translateY(-16px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* 🤖 Büşra botu — konuşurken kafa sallama animasyonu */
+.bk-nod {
+  animation: bk-nod 0.55s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+@keyframes bk-nod {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  30% { transform: rotate(-5deg) translateY(-1px); }
+  70% { transform: rotate(5deg) translateY(-1px); }
+}
+/* Konuşurken avatar çevresinde nabız halkası */
+.bk-speaking-ring {
+  box-shadow: 0 0 0 0 rgba(244,114,182,0.5);
+  animation: bk-speaking-ring 1.1s ease-out infinite;
+}
+@keyframes bk-speaking-ring {
+  0% { box-shadow: 0 0 0 0 rgba(244,114,182,0.55); }
+  100% { box-shadow: 0 0 0 14px rgba(244,114,182,0); }
+}
