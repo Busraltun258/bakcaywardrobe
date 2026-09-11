@@ -1,6 +1,6 @@
 import * as admin from 'firebase-admin'
 import { getFirestore } from 'firebase-admin/firestore'
-import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore'
 
 admin.initializeApp()
 
@@ -210,6 +210,64 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
       title: `⭐ ${name} kombini puanladı`,
       body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
       link: `/home?focus=${event.params.sid}`,
+    })
+  }
+})
+
+/** Çiftin admin (Büşra) ve kullanıcı (Kamuran) uid'lerini bulur. */
+async function getCoupleUids(): Promise<{ adminUid?: string; userUid?: string }> {
+  const snap = await db.collection('profiles').get()
+  let adminUid: string | undefined
+  let userUid: string | undefined
+  snap.docs.forEach((d) => {
+    if (d.data().isAdmin === true) adminUid = d.id
+    else userUid = d.id
+  })
+  return { adminUid, userUid }
+}
+
+/**
+ * 💢 Trip Modu bildirimleri (loveStreak/tripMode dokümanı):
+ *  - Büşra trip attı → Kamuran'a "gönlünü al"
+ *  - Kamuran jest/mesaj yaptı → Büşra'ya "gönlünü almaya çalışıyor"
+ *  - Büşra barıştı → Kamuran'a "barıştık"
+ * onDocumentWritten: ilk oluşturmayı da yakalar.
+ */
+export const onTripMode = onDocumentWritten('loveStreak/tripMode', async (event) => {
+  const before = (event.data?.before?.data() ?? {}) as Record<string, unknown>
+  const after = (event.data?.after?.data() ?? {}) as Record<string, unknown>
+  const { adminUid, userUid } = await getCoupleUids()
+
+  const becameActive = before.active !== true && after.active === true
+  const becameResolved = before.active === true && after.active !== true
+  const beforeG = Array.isArray(before.gestures) ? before.gestures.length : 0
+  const afterG = Array.isArray(after.gestures) ? (after.gestures as unknown[]).length : 0
+
+  if (becameActive && userUid) {
+    const note = typeof after.note === 'string' && after.note ? after.note : ''
+    await sendToUser(userUid, {
+      title: '💔 Büşra sana trip attı 😤',
+      body: note ? `"${note.slice(0, 80)}" — gönlünü al 🥺` : 'Hadi gönlünü al 🥺',
+      link: '/wardrobe',
+    })
+    return
+  }
+  if (becameResolved && userUid) {
+    await sendToUser(userUid, {
+      title: '💛 Büşra barıştı!',
+      body: 'Trip modu bitti, her şey yolunda 🫶',
+      link: '/wardrobe',
+    })
+    return
+  }
+  if (afterG > beforeG && adminUid) {
+    const list = after.gestures as Array<{ emoji?: string; label?: string; text?: string }>
+    const last = list[afterG - 1] ?? {}
+    const txt = last.text ? `: "${String(last.text).slice(0, 80)}"` : ''
+    await sendToUser(adminUid, {
+      title: '💌 Kamuran gönlünü almaya çalışıyor',
+      body: `${last.emoji ?? ''} ${last.label ?? ''}${txt}`.trim(),
+      link: '/home',
     })
   }
 })

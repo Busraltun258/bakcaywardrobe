@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onOneriGuncelleme = exports.onYeniTalep = exports.onYeniOneri = void 0;
+exports.onTripMode = exports.onOneriGuncelleme = exports.onYeniTalep = exports.onYeniOneri = void 0;
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const firestore_2 = require("firebase-functions/v2/firestore");
@@ -230,6 +230,63 @@ exports.onOneriGuncelleme = (0, firestore_2.onDocumentUpdated)('outfitSuggestion
             title: `⭐ ${name} kombini puanladı`,
             body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
             link: `/home?focus=${event.params.sid}`,
+        });
+    }
+});
+/** Çiftin admin (Büşra) ve kullanıcı (Kamuran) uid'lerini bulur. */
+async function getCoupleUids() {
+    const snap = await db.collection('profiles').get();
+    let adminUid;
+    let userUid;
+    snap.docs.forEach((d) => {
+        if (d.data().isAdmin === true)
+            adminUid = d.id;
+        else
+            userUid = d.id;
+    });
+    return { adminUid, userUid };
+}
+/**
+ * 💢 Trip Modu bildirimleri (loveStreak/tripMode dokümanı):
+ *  - Büşra trip attı → Kamuran'a "gönlünü al"
+ *  - Kamuran jest/mesaj yaptı → Büşra'ya "gönlünü almaya çalışıyor"
+ *  - Büşra barıştı → Kamuran'a "barıştık"
+ * onDocumentWritten: ilk oluşturmayı da yakalar.
+ */
+exports.onTripMode = (0, firestore_2.onDocumentWritten)('loveStreak/tripMode', async (event) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    const before = ((_c = (_b = (_a = event.data) === null || _a === void 0 ? void 0 : _a.before) === null || _b === void 0 ? void 0 : _b.data()) !== null && _c !== void 0 ? _c : {});
+    const after = ((_f = (_e = (_d = event.data) === null || _d === void 0 ? void 0 : _d.after) === null || _e === void 0 ? void 0 : _e.data()) !== null && _f !== void 0 ? _f : {});
+    const { adminUid, userUid } = await getCoupleUids();
+    const becameActive = before.active !== true && after.active === true;
+    const becameResolved = before.active === true && after.active !== true;
+    const beforeG = Array.isArray(before.gestures) ? before.gestures.length : 0;
+    const afterG = Array.isArray(after.gestures) ? after.gestures.length : 0;
+    if (becameActive && userUid) {
+        const note = typeof after.note === 'string' && after.note ? after.note : '';
+        await sendToUser(userUid, {
+            title: '💔 Büşra sana trip attı 😤',
+            body: note ? `"${note.slice(0, 80)}" — gönlünü al 🥺` : 'Hadi gönlünü al 🥺',
+            link: '/wardrobe',
+        });
+        return;
+    }
+    if (becameResolved && userUid) {
+        await sendToUser(userUid, {
+            title: '💛 Büşra barıştı!',
+            body: 'Trip modu bitti, her şey yolunda 🫶',
+            link: '/wardrobe',
+        });
+        return;
+    }
+    if (afterG > beforeG && adminUid) {
+        const list = after.gestures;
+        const last = (_g = list[afterG - 1]) !== null && _g !== void 0 ? _g : {};
+        const txt = last.text ? `: "${String(last.text).slice(0, 80)}"` : '';
+        await sendToUser(adminUid, {
+            title: '💌 Kamuran gönlünü almaya çalışıyor',
+            body: `${(_h = last.emoji) !== null && _h !== void 0 ? _h : ''} ${(_j = last.label) !== null && _j !== void 0 ? _j : ''}${txt}`.trim(),
+            link: '/home',
         });
     }
 });

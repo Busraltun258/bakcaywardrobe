@@ -1,5 +1,4 @@
 import {
-  AppstoreOutlined,
   BarChartOutlined,
   CalendarOutlined,
   DashboardOutlined,
@@ -20,6 +19,7 @@ import { COLORS } from '../theme'
 import EnableNotifications from './EnableNotifications'
 import ForegroundNotif from './ForegroundNotif'
 import KamuranGreeting from './KamuranGreeting'
+import TripMode from './TripMode'
 
 interface Props {
   children: React.ReactNode
@@ -91,7 +91,11 @@ const AppLayout: React.FC<Props> = ({ children }) => {
             onClick={() => navigate(isAdmin ? '/home' : '/wardrobe')}
           >
             <div style={styles.brandIcon}>
-              <AppstoreOutlined />
+              <img
+                src="/apple-touch-icon.png"
+                alt="Bakçay"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
             <div>
               <div style={styles.brandTitle}>Bakçay</div>
@@ -134,6 +138,8 @@ const AppLayout: React.FC<Props> = ({ children }) => {
       <div style={{ padding: '0 16px' }}>
         <EnableNotifications />
       </div>
+
+      <TripMode />
 
       <main className="fade-in">{children}</main>
 
@@ -215,6 +221,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 38,
     height: 38,
     borderRadius: 11,
+    overflow: 'hidden',
     background: COLORS.gradient,
     display: 'flex',
     alignItems: 'center',

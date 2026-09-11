@@ -76,7 +76,11 @@ const Login: React.FC = () => {
         {/* Brand */}
         <div style={styles.brand}>
           <div style={styles.brandIcon}>
-            <SkinOutlined />
+            <img
+              src="/apple-touch-icon.png"
+              alt="Bakçay"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           </div>
           <h1 style={styles.brandTitle}>Bakçay</h1>
           <p style={styles.brandSub}>Senin kişisel dijital dolabın</p>
@@ -192,6 +196,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 64,
     height: 64,
     borderRadius: 18,
+    overflow: 'hidden',
     background: COLORS.gradient,
     color: '#fff',
     fontSize: 30,
