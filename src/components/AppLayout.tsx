@@ -145,6 +145,23 @@ const AppLayout: React.FC<Props> = ({ children }) => {
 
       <KamuranGreeting />
 
+      {!isAdmin && location.pathname !== '/busra' && (
+        <button
+          type="button"
+          onClick={() => navigate('/busra')}
+          style={styles.busraFab}
+          title="Büşra ile konuş"
+          aria-label="Büşra ile konuş"
+        >
+          <img
+            src="/busra-avatar.png"
+            alt="Büşra"
+            onError={(e) => ((e.currentTarget as HTMLImageElement).src = '/apple-touch-icon.png')}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        </button>
+      )}
+
       <nav className="bk-mobile-bottom-nav bk-mobile-only">
         {navItems.map((item) => {
           const active = isActive(item.key)
@@ -277,6 +294,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
+  },
+  busraFab: {
+    position: 'fixed' as const,
+    left: 16,
+    bottom: 'calc(84px + env(safe-area-inset-bottom))',
+    width: 54,
+    height: 54,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    padding: 0,
+    border: '2px solid rgba(244,114,182,0.6)',
+    background: COLORS.bgCard,
+    boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
+    cursor: 'pointer',
+    zIndex: 90,
   },
 }
 

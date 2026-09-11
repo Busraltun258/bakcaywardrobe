@@ -5,6 +5,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore'
+import { getFunctions } from 'firebase/functions'
 import { getMessaging, isSupported } from 'firebase/messaging'
 
 const firebaseConfig = {
@@ -33,6 +34,9 @@ export const db = initializeFirestore(app, {
     tabManager: persistentMultipleTabManager(),
   }),
 })
+
+// Cloud Functions (AI Büşra botu vb.) — fonksiyonlar us-central1'de
+export const functions = getFunctions(app)
 
 // Messaging sadece desteklenen tarayıcılarda başlat
 export const messagingPromise = isSupported().then((ok) => (ok ? getMessaging(app) : null))
