@@ -1,13 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
 import * as admin from 'firebase-admin'
 import { getFirestore } from 'firebase-admin/firestore'
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore'
-import { defineSecret } from 'firebase-functions/params'
-import { HttpsError, onCall } from 'firebase-functions/v2/https'
 
 admin.initializeApp()
-
-const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY')
 
 const db = getFirestore(admin.app())
 
@@ -276,56 +271,3 @@ export const onTripMode = onDocumentWritten('loveStreak/tripMode', async (event)
     })
   }
 })
-
-/**
- * 🤖 AI "Büşra botu" — Kamuran'ın konuşabileceği, Büşra kişiliğinde asistan.
- * Claude API üzerinden. Anahtar functions secret: ANTHROPIC_API_KEY.
- * mood: 'normal' | 'trip' (trip modunda biraz kırgın/naz yapar).
- */
-const BUSRA_NORMAL = `Sen "Büşra"sın — Kamuran'ın sevgilisi/eşi ve ona bu uygulamada kombin öneren stilistisin.
-Sıcak, şakacı, sevgi dolu ve samimi konuşursun; ara ara tatlı tatlı takılırsın.
-Türkçe, KISA ve doğal cevaplar ver (1-4 cümle), bolca 💛 gibi emoji kullan ama abartma.
-Kamuran'a "aşkım", "canım" gibi hitap edebilirsin. Kendini yapay zeka olduğunu söyleme, doğal ol.`
-
-const BUSRA_TRIP = `Sen "Büşra"sın ve şu an Kamuran'a biraz TRİP'tesin 😤 (küs/nazlı).
-Kırgınsın ama derinde sevgi dolusun. Onu biraz uğraştır, sitem et ama tatlı sözlerle/jestlerle
-gönlün alınırsa yavaş yavaş yumuşa. Türkçe, kısa cevaplar. Gerçekten içten bir özür/jest gelirse barış 💛.`
-
-export const busraChat = onCall(
-  { secrets: [ANTHROPIC_API_KEY], cors: true },
-  async (req) => {
-    if (!req.auth) throw new HttpsError('unauthenticated', 'Giriş gerekli')
-    const data = (req.data ?? {}) as { messages?: Array<{ role: string; content: string }>; mood?: string }
-    const mood = data.mood === 'trip' ? 'trip' : 'normal'
-    const history = Array.isArray(data.messages) ? data.messages : []
-
-    const messages = history
-      .slice(-20)
-      .filter((m) => m && typeof m.content === 'string' && m.content.trim())
-      .map((m) => ({
-        role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-        content: m.content.slice(0, 2000),
-      }))
-    if (messages.length === 0) return { reply: 'Efendim aşkım? 💛' }
-
-    try {
-      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() })
-      const resp = await client.messages.create({
-        model: 'claude-opus-5',
-        max_tokens: 800,
-        output_config: { effort: 'low' },
-        system: mood === 'trip' ? BUSRA_TRIP : BUSRA_NORMAL,
-        messages,
-      })
-      const text = resp.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim()
-      return { reply: text || '💛' }
-    } catch (e) {
-      console.error('[busraChat] hata:', e)
-      throw new HttpsError('internal', 'Şu an cevap veremiyorum, birazdan tekrar dene 🥺')
-    }
-  },
-)

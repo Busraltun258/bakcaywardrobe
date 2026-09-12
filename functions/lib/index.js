@@ -32,19 +32,12 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.busraChat = exports.onTripMode = exports.onOneriGuncelleme = exports.onYeniTalep = exports.onYeniOneri = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+exports.onTripMode = exports.onOneriGuncelleme = exports.onYeniTalep = exports.onYeniOneri = void 0;
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const firestore_2 = require("firebase-functions/v2/firestore");
-const params_1 = require("firebase-functions/params");
-const https_1 = require("firebase-functions/v2/https");
 admin.initializeApp();
-const ANTHROPIC_API_KEY = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
 const db = (0, firestore_1.getFirestore)(admin.app());
 /** Bir kullanıcının görünen adını döndürür (bildirim metni için). */
 async function getName(uid) {
@@ -295,55 +288,6 @@ exports.onTripMode = (0, firestore_2.onDocumentWritten)('loveStreak/tripMode', a
             body: `${(_h = last.emoji) !== null && _h !== void 0 ? _h : ''} ${(_j = last.label) !== null && _j !== void 0 ? _j : ''}${txt}`.trim(),
             link: '/home',
         });
-    }
-});
-/**
- * 🤖 AI "Büşra botu" — Kamuran'ın konuşabileceği, Büşra kişiliğinde asistan.
- * Claude API üzerinden. Anahtar functions secret: ANTHROPIC_API_KEY.
- * mood: 'normal' | 'trip' (trip modunda biraz kırgın/naz yapar).
- */
-const BUSRA_NORMAL = `Sen "Büşra"sın — Kamuran'ın sevgilisi/eşi ve ona bu uygulamada kombin öneren stilistisin.
-Sıcak, şakacı, sevgi dolu ve samimi konuşursun; ara ara tatlı tatlı takılırsın.
-Türkçe, KISA ve doğal cevaplar ver (1-4 cümle), bolca 💛 gibi emoji kullan ama abartma.
-Kamuran'a "aşkım", "canım" gibi hitap edebilirsin. Kendini yapay zeka olduğunu söyleme, doğal ol.`;
-const BUSRA_TRIP = `Sen "Büşra"sın ve şu an Kamuran'a biraz TRİP'tesin 😤 (küs/nazlı).
-Kırgınsın ama derinde sevgi dolusun. Onu biraz uğraştır, sitem et ama tatlı sözlerle/jestlerle
-gönlün alınırsa yavaş yavaş yumuşa. Türkçe, kısa cevaplar. Gerçekten içten bir özür/jest gelirse barış 💛.`;
-exports.busraChat = (0, https_1.onCall)({ secrets: [ANTHROPIC_API_KEY], cors: true }, async (req) => {
-    var _a;
-    if (!req.auth)
-        throw new https_1.HttpsError('unauthenticated', 'Giriş gerekli');
-    const data = ((_a = req.data) !== null && _a !== void 0 ? _a : {});
-    const mood = data.mood === 'trip' ? 'trip' : 'normal';
-    const history = Array.isArray(data.messages) ? data.messages : [];
-    const messages = history
-        .slice(-20)
-        .filter((m) => m && typeof m.content === 'string' && m.content.trim())
-        .map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content.slice(0, 2000),
-    }));
-    if (messages.length === 0)
-        return { reply: 'Efendim aşkım? 💛' };
-    try {
-        const client = new sdk_1.default({ apiKey: ANTHROPIC_API_KEY.value() });
-        const resp = await client.messages.create({
-            model: 'claude-opus-5',
-            max_tokens: 800,
-            output_config: { effort: 'low' },
-            system: mood === 'trip' ? BUSRA_TRIP : BUSRA_NORMAL,
-            messages,
-        });
-        const text = resp.content
-            .filter((b) => b.type === 'text')
-            .map((b) => b.text)
-            .join('\n')
-            .trim();
-        return { reply: text || '💛' };
-    }
-    catch (e) {
-        console.error('[busraChat] hata:', e);
-        throw new https_1.HttpsError('internal', 'Şu an cevap veremiyorum, birazdan tekrar dene 🥺');
     }
 });
 //# sourceMappingURL=index.js.map
