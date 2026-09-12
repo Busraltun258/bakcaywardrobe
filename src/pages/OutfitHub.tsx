@@ -976,8 +976,10 @@ const OutfitHub: React.FC = () => {
               label: (
                 <span>
                   <HistoryOutlined /> Önceki Kombinler
-                  {myOutgoing.length > 0 && (
-                    <span style={styles.tabCount}>{myOutgoing.length}</span>
+                  {/* Talep sayısı değil, gerçek kombin/gün sayısı gösterilir — haftalık
+                      bir talep 5 kombin ürettiği için 1 değil 5 saymalı. */}
+                  {suggestions.length > 0 && (
+                    <span style={styles.tabCount}>{suggestions.length}</span>
                   )}
                 </span>
               ),
