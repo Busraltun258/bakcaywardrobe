@@ -68,7 +68,7 @@ export function matchesSeasonFilter(
  *   Ocak: Kış · Şubat: Kış · Mart: Kış+Sonbahar
  *   Nisan: İlkbahar+Sonbahar · Mayıs: İlkbahar+Yaz
  *   Haziran: Yaz · Temmuz: Yaz · Ağustos: Yaz
- *   Eylül: Sonbahar+Yaz · Ekim: Sonbahar+İlkbahar
+ *   Eylül: Yaz (sonbahar etiketi kaldırıldı) · Ekim: Sonbahar+İlkbahar
  *   Kasım: Sonbahar+Kış · Aralık: Kış+Sonbahar
  */
 const MONTH_SEASONS: Record<number, Season[]> = {
@@ -80,7 +80,7 @@ const MONTH_SEASONS: Record<number, Season[]> = {
   5: ['summer'], // Haziran
   6: ['summer'], // Temmuz
   7: ['summer'], // Ağustos
-  8: ['autumn', 'summer'], // Eylül
+  8: ['summer'], // Eylül
   9: ['autumn', 'spring'], // Ekim
   10: ['autumn', 'winter'], // Kasım
   11: ['winter', 'autumn'], // Aralık
