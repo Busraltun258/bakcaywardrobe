@@ -142,6 +142,7 @@ const OutfitHub: React.FC = () => {
   const [loadingReqs, setLoadingReqs] = useState(true)
   const [lightboxSlides, setLightboxSlides] = useState<ClothingItem[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [lightboxWornPhoto, setLightboxWornPhoto] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
   // Sekme seçimi:
   //  - URL'de ?tab=history/new varsa (örn. bildirim linki) ona uyulur.
@@ -171,10 +172,11 @@ const OutfitHub: React.FC = () => {
   // tekrar açmasın diye kısa bir koruma (iOS ghost-click). Kapanış zamanını tutar.
   const locationClosedAtRef = useRef(0)
 
-  const openSlideshow = (items: ClothingItem[], item: ClothingItem) => {
+  const openSlideshow = (items: ClothingItem[], item: ClothingItem, wornPhoto?: string) => {
     const idx = Math.max(0, items.findIndex((i) => i.id === item.id))
     setLightboxSlides(items)
     setLightboxIndex(idx)
+    setLightboxWornPhoto(wornPhoto ?? null)
   }
 
   // Tüm değerlendirilmemiş (liked=null) önerileri "gördüm" olarak işaretle.
@@ -1025,15 +1027,27 @@ const OutfitHub: React.FC = () => {
 
       <Lightbox
         open={!!lightboxSlides}
-        onClose={() => setLightboxSlides(null)}
-        slides={
-          lightboxSlides?.map((c) => ({
+        onClose={() => {
+          setLightboxSlides(null)
+          setLightboxWornPhoto(null)
+        }}
+        slides={[
+          ...(lightboxSlides?.map((c) => ({
             src: clothingItemImageSrc(c),
             imageKey: c.id,
             title: c.label,
             description: c.description,
-          })) ?? []
-        }
+          })) ?? []),
+          ...(lightboxWornPhoto
+            ? [
+                {
+                  src: lightboxWornPhoto,
+                  title: '📸 Tam görünüm',
+                  description: 'Bu kombinle giydi',
+                },
+              ]
+            : []),
+        ]}
         startIndex={lightboxIndex}
       />
 
@@ -1075,7 +1089,7 @@ interface RequestThreadProps {
   isAdmin: boolean
   onDeleteSuggestion: (s: OutfitSuggestion) => void
   onEditRequest: () => void
-  onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  onPreview: (items: ClothingItem[], item: ClothingItem, wornPhoto?: string) => void
   onJumpToItem: (itemId: string, fromSuggestionId: string) => void
   allClothes: Record<string, ClothingItem>
 }
@@ -1202,7 +1216,7 @@ const WeeklyView: React.FC<{
   isAdmin: boolean
   allClothes: Record<string, ClothingItem>
   onDelete: (s: OutfitSuggestion) => void
-  onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  onPreview: (items: ClothingItem[], item: ClothingItem, wornPhoto?: string) => void
   onJumpToItem: (itemId: string, fromSuggestionId: string) => void
 }> = ({ request, suggestions, profileName, isAdmin, allClothes, onDelete, onPreview, onJumpToItem }) => {
   const byDay = useMemo(() => {
@@ -1290,7 +1304,7 @@ interface SuggestionCardProps {
   isAdmin: boolean
   allClothes: Record<string, ClothingItem>
   onDelete: () => void
-  onPreview: (items: ClothingItem[], item: ClothingItem) => void
+  onPreview: (items: ClothingItem[], item: ClothingItem, wornPhoto?: string) => void
   onJumpToItem?: (itemId: string, fromSuggestionId: string) => void
   compact?: boolean
 }
@@ -1453,7 +1467,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
                 <>
                   <button
                     type="button"
-                    onClick={() => onPreview(orderedItems, c)}
+                    onClick={() => onPreview(orderedItems, c, s.wornPhotoBase64)}
                     style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                   >
                     <SmartImage
