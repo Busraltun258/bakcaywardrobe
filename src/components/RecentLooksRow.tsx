@@ -1,14 +1,17 @@
+import { CloseOutlined } from '@ant-design/icons'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import dayjs from 'dayjs'
 import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
 import { OutfitRequest, OutfitSuggestion } from '../types'
 import { getWornDate, isWorn } from '../utils/outfitDate'
-import Lightbox from './Lightbox'
 
 const LOOKBACK_DAYS = 30
+const STORY_DURATION_MS = 10000
 
 function dayLabel(dateStr: string): string {
   const today = dayjs().format('YYYY-MM-DD')
@@ -16,6 +19,51 @@ function dayLabel(dateStr: string): string {
   if (dateStr === today) return 'Bugün'
   if (dateStr === yesterday) return 'Dün'
   return dayjs(dateStr).format('D MMM')
+}
+
+/** Instagram tarzı tam ekran story: üstte dolan ilerleme çizgisi, 10sn sonra otomatik kapanır. */
+const StoryViewer: React.FC<{ src: string; label: string; onClose: () => void }> = ({
+  src,
+  label,
+  onClose,
+}) => {
+  const [filled, setFilled] = useState(false)
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const raf = requestAnimationFrame(() => setFilled(true))
+    const closeTimer = setTimeout(onClose, STORY_DURATION_MS)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(closeTimer)
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div style={styles.storyBackdrop} onClick={onClose}>
+      <div style={styles.storyProgressTrack}>
+        <div
+          style={{
+            ...styles.storyProgressFill,
+            width: filled ? '100%' : '0%',
+          }}
+        />
+      </div>
+      <div style={styles.storyLabel}>📸 {label}</div>
+      <button type="button" style={styles.storyClose} onClick={onClose} aria-label="Kapat">
+        <CloseOutlined />
+      </button>
+      <img src={src} alt="" style={styles.storyImage} draggable={false} />
+    </div>,
+    document.body,
+  )
 }
 
 interface Props {
@@ -27,13 +75,18 @@ interface Props {
 /**
  * "Son Giydiklerim" — story tarzı, dönen gradyan halkalı yuvarlak fotoğraf şeridi.
  * Son 30 gün içinde giyilmiş (isWorn) kombinleri, en yeniden eskiye sıralar.
- * Fotoğrafı olmayan günler nötr bir ikonla gösterilir (yine de tarihe göz atmak için).
+ * Fotoğrafı olan story'e tıklayınca Instagram gibi tam ekran açılır, 10sn'de kapanır.
+ * Fotoğrafı olmayan günler nötr bir ikonla gösterilir, tıklayınca o kombine götürür.
  */
 const RecentLooksRow: React.FC<Props> = ({ uid, title = 'Son Giydiklerim 💫' }) => {
   const navigate = useNavigate()
+  const { isAdmin } = useAuth()
+  // Büşra (admin) panelindeki (/home) kombinlere gider, Kamuran kendi geçmişine (/kombin) gider.
+  const focusPath = (sid: string) =>
+    isAdmin ? `/home?focus=${sid}` : `/kombin?tab=history&focus=${sid}`
   const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([])
   const [requests, setRequests] = useState<Record<string, OutfitRequest>>({})
-  const [enlarged, setEnlarged] = useState<{ src: string; label: string } | null>(null)
+  const [story, setStory] = useState<{ src: string; label: string } | null>(null)
 
   useEffect(() => {
     if (!uid) return
@@ -84,9 +137,9 @@ const RecentLooksRow: React.FC<Props> = ({ uid, title = 'Son Giydiklerim 💫' }
             style={styles.item}
             onClick={() => {
               if (s.wornPhotoBase64) {
-                setEnlarged({ src: s.wornPhotoBase64, label: dayLabel(wornDate) })
+                setStory({ src: s.wornPhotoBase64, label: dayLabel(wornDate) })
               } else {
-                navigate(`/kombin?tab=history&focus=${s.id}`)
+                navigate(focusPath(s.id))
               }
             }}
           >
@@ -105,12 +158,9 @@ const RecentLooksRow: React.FC<Props> = ({ uid, title = 'Son Giydiklerim 💫' }
         ))}
       </div>
 
-      <Lightbox
-        open={!!enlarged}
-        onClose={() => setEnlarged(null)}
-        src={enlarged?.src ?? ''}
-        title={`📸 ${enlarged?.label ?? ''} giydiği görünüm`}
-      />
+      {story && (
+        <StoryViewer src={story.src} label={story.label} onClose={() => setStory(null)} />
+      )}
 
       <style>{`
         @keyframes bk-story-spin {
@@ -185,6 +235,65 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     color: COLORS.textMuted,
     fontWeight: 500,
+  },
+  storyBackdrop: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: '#000',
+    zIndex: 2100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  storyProgressTrack: {
+    position: 'absolute' as const,
+    top: 10,
+    left: 10,
+    right: 10,
+    height: 3,
+    borderRadius: 3,
+    background: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  storyProgressFill: {
+    height: '100%',
+    background: '#fff',
+    borderRadius: 3,
+    transition: `width ${STORY_DURATION_MS}ms linear`,
+  },
+  storyLabel: {
+    position: 'absolute' as const,
+    top: 22,
+    left: 14,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+    zIndex: 2,
+  },
+  storyClose: {
+    position: 'absolute' as const,
+    top: 18,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: '50%',
+    border: 'none',
+    background: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    fontSize: 15,
+    cursor: 'pointer',
+    zIndex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyImage: {
+    maxWidth: '100%',
+    maxHeight: '100%',
+    objectFit: 'contain' as const,
   },
 }
 
