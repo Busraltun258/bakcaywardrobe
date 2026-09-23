@@ -39,6 +39,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocs,
   onSnapshot,
@@ -1320,7 +1321,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   onJumpToItem,
   compact = false,
 }) => {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { user } = useAuth()
   // Compose kutusu — her zaman boş başlar (chat tarzı). Gönderince temizlenir.
   const [comment, setComment] = useState('')
@@ -1329,6 +1330,7 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   const [savingFeedback, setSavingFeedback] = useState(false)
   // "Full look" fotoğrafı — kombin giyildikten sonra Kamuran'ın eklediği kendi fotoğrafı.
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [deletingPhoto, setDeletingPhoto] = useState(false)
   const [photoEnlarged, setPhotoEnlarged] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const wornDate = request ? getWornDate(s, request) : undefined
@@ -1425,6 +1427,31 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
     } finally {
       setUploadingPhoto(false)
     }
+  }
+
+  // "Full look" fotoğrafını sil — hem Kamuran hem Büşra (yanlış/test yükleme durumunda) yapabilir.
+  const deleteWornPhoto = () => {
+    modal.confirm({
+      title: 'Fotoğrafı sil',
+      content: 'Bu kombinle çekilmiş fotoğrafı silmek istediğine emin misin?',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        setDeletingPhoto(true)
+        try {
+          await updateDoc(doc(db, 'outfitSuggestions', s.id), {
+            wornPhotoBase64: deleteField(),
+            wornPhotoAt: deleteField(),
+          })
+          message.success('Fotoğraf silindi')
+        } catch {
+          message.error('Silinemedi, tekrar dener misin?')
+        } finally {
+          setDeletingPhoto(false)
+        }
+      },
+    })
   }
 
   const handleRate = (val: number) => {
@@ -1539,16 +1566,26 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
                 <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>
                   📸 Bu kombinle giydi
                 </div>
-                {!isAdmin && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
+                  {!isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      style={styles.wornPhotoChangeBtn}
+                      disabled={uploadingPhoto || deletingPhoto}
+                    >
+                      {uploadingPhoto ? 'Yükleniyor…' : 'Değiştir'}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    style={styles.wornPhotoChangeBtn}
-                    disabled={uploadingPhoto}
+                    onClick={deleteWornPhoto}
+                    style={{ ...styles.wornPhotoChangeBtn, color: COLORS.error }}
+                    disabled={uploadingPhoto || deletingPhoto}
                   >
-                    {uploadingPhoto ? 'Yükleniyor…' : 'Değiştir'}
+                    {deletingPhoto ? 'Siliniyor…' : 'Sil'}
                   </button>
-                )}
+                </div>
               </div>
             </div>
           ) : (
