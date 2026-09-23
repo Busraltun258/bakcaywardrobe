@@ -45,6 +45,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import DaySlider from '../components/DaySlider'
 import Lightbox from '../components/Lightbox'
+import RecentLooksRow from '../components/RecentLooksRow'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -314,6 +315,12 @@ const AdminHome: React.FC = () => {
           </h1>
           <p style={styles.heroSub}>Gelen istekleri yanıtla, önerilerini yönet</p>
         </div>
+
+        {/* Kamuran'ın son giydikleri — story tarzı dönen halkalar */}
+        <RecentLooksRow
+          uid={profiles.find((p) => !p.isAdmin)?.id}
+          title={`${profileName(profiles.find((p) => !p.isAdmin)?.id ?? '')} son giydikleri 💫`}
+        />
 
         {/* Stats */}
         <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>

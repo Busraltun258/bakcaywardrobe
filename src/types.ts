@@ -86,6 +86,12 @@ export interface OutfitSuggestion {
    * Eski kayıtlarda yok — o durumda advisorNote + comment'ten türetilir.
    */
   messages?: OutfitMessage[]
+  /**
+   * "Full look" — kombini giydikten sonra kullanıcının paylaştığı kendi fotoğrafı.
+   * Sadece giyilme tarihi geçtikten sonra eklenebilir (bkz. utils/outfitDate).
+   */
+  wornPhotoBase64?: string
+  wornPhotoAt?: number
 }
 
 /**

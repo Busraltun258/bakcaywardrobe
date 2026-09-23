@@ -211,6 +211,19 @@ export const onOneriGuncelleme = onDocumentUpdated('outfitSuggestions/{sid}', as
       body: `${afterRating} yıldız verdi ${'⭐'.repeat(afterRating)}`,
       link: `/home?focus=${event.params.sid}`,
     })
+    return
+  }
+
+  // 3) "Full look" fotoğrafı yeni eklendi mi? (kombini giydikten sonra kendi fotoğrafı)
+  const hadPhoto = !!before.wornPhotoBase64
+  const hasPhoto = !!after.wornPhotoBase64
+  if (!hadPhoto && hasPhoto && after.advisorUid) {
+    const name = await getName(after.requesterUid || '')
+    await sendToUser(after.advisorUid, {
+      title: `📸 ${name} kombinini giydi!`,
+      body: 'Tam görünümünü paylaştı, bak bakalım 👀',
+      link: `/home?focus=${event.params.sid}`,
+    })
   }
 })
 

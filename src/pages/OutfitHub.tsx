@@ -2,6 +2,7 @@ import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   CalendarOutlined,
+  CameraOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
   ClockCircleOutlined,
@@ -64,7 +65,8 @@ import {
   UserProfile,
   WEEKDAYS,
 } from '../types'
-import { clothingItemImageSrc } from '../utils/imageUtils'
+import { clothingItemImageSrc, compressImageToBase64 } from '../utils/imageUtils'
+import { getWornDate, isWorn } from '../utils/outfitDate'
 import { buildThread, sendMessageToSuggestion } from '../utils/outfitMessages'
 import {
   CityDistrict,
@@ -1165,6 +1167,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
       )}
       {isWeekly ? (
         <WeeklyView
+          request={request}
           suggestions={suggestions}
           profileName={profileName}
           isAdmin={isAdmin}
@@ -1178,6 +1181,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
           <SuggestionCard
             key={s.id}
             suggestion={s}
+            request={request}
             profileName={profileName}
             isAdmin={isAdmin}
             allClothes={allClothes}
@@ -1192,6 +1196,7 @@ const RequestThread: React.FC<RequestThreadProps> = ({
 }
 
 const WeeklyView: React.FC<{
+  request: OutfitRequest
   suggestions: OutfitSuggestion[]
   profileName: (uid: string) => string
   isAdmin: boolean
@@ -1199,7 +1204,7 @@ const WeeklyView: React.FC<{
   onDelete: (s: OutfitSuggestion) => void
   onPreview: (items: ClothingItem[], item: ClothingItem) => void
   onJumpToItem: (itemId: string, fromSuggestionId: string) => void
-}> = ({ suggestions, profileName, isAdmin, allClothes, onDelete, onPreview, onJumpToItem }) => {
+}> = ({ request, suggestions, profileName, isAdmin, allClothes, onDelete, onPreview, onJumpToItem }) => {
   const byDay = useMemo(() => {
     const map: Record<number, OutfitSuggestion> = {}
     suggestions.forEach((s) => {
@@ -1254,6 +1259,7 @@ const WeeklyView: React.FC<{
                 {s ? (
                   <SuggestionCard
                     suggestion={s}
+                    request={request}
                     profileName={profileName}
                     isAdmin={isAdmin}
                     allClothes={allClothes}
@@ -1278,6 +1284,8 @@ const WeeklyView: React.FC<{
 
 interface SuggestionCardProps {
   suggestion: OutfitSuggestion
+  /** Giyilme tarihini hesaplamak için — "full look" fotoğrafı sadece giyildikten sonra eklenebilir. */
+  request?: OutfitRequest
   profileName: (uid: string) => string
   isAdmin: boolean
   allClothes: Record<string, ClothingItem>
@@ -1289,6 +1297,7 @@ interface SuggestionCardProps {
 
 const SuggestionCard: React.FC<SuggestionCardProps> = ({
   suggestion: s,
+  request,
   profileName,
   isAdmin,
   allClothes,
@@ -1304,6 +1313,12 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
   const [, setLiked] = useState<'yes' | 'no' | null>(s.liked ?? null)
   const [rating, setRating] = useState<number>(s.rating ?? 0)
   const [savingFeedback, setSavingFeedback] = useState(false)
+  // "Full look" fotoğrafı — kombin giyildikten sonra Kamuran'ın eklediği kendi fotoğrafı.
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoEnlarged, setPhotoEnlarged] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const wornDate = request ? getWornDate(s, request) : undefined
+  const worn = wornDate ? isWorn(wornDate) : false
 
   // Yeni öneriye geçince (s.id değişince) compose kutusunu boşalt.
   useEffect(() => {
@@ -1371,6 +1386,30 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
       message.error('Kaydedilemedi')
     } finally {
       setSavingFeedback(false)
+    }
+  }
+
+  // "Full look" fotoğrafı yükle — sıkıştırıp Firestore'a yazar, Büşra'ya bildirim gider.
+  const uploadWornPhoto = async (file: File) => {
+    setUploadingPhoto(true)
+    try {
+      let b64 = await compressImageToBase64(file, 1000, 0.78)
+      if (b64.length > 700_000) {
+        b64 = await compressImageToBase64(file, 800, 0.65)
+      }
+      if (b64.length > 700_000) {
+        message.error('Fotoğraf çok büyük, daha küçük bir tane dener misin? 🙏')
+        return
+      }
+      await updateDoc(doc(db, 'outfitSuggestions', s.id), {
+        wornPhotoBase64: b64,
+        wornPhotoAt: Date.now(),
+      })
+      message.success('Fotoğrafın eklendi, Büşra\'ya haber gitti 📸💛')
+    } catch {
+      message.error('Yüklenemedi, tekrar dener misin?')
+    } finally {
+      setUploadingPhoto(false)
     }
   }
 
@@ -1469,6 +1508,61 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
         )}
       </div>
 
+      {/* "Full look" fotoğrafı — sadece giyilme tarihi geçince görünür */}
+      {worn && (s.wornPhotoBase64 || !isAdmin) && (
+        <div style={styles.wornPhotoBlock}>
+          {s.wornPhotoBase64 ? (
+            <div style={styles.wornPhotoRow}>
+              <button
+                type="button"
+                onClick={() => setPhotoEnlarged(true)}
+                style={styles.wornPhotoThumbBtn}
+                aria-label="Fotoğrafı büyüt"
+              >
+                <img src={s.wornPhotoBase64} alt="Tam görünüm" style={styles.wornPhotoThumb} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>
+                  📸 Bu kombinle giydi
+                </div>
+                {!isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    style={styles.wornPhotoChangeBtn}
+                    disabled={uploadingPhoto}
+                  >
+                    {uploadingPhoto ? 'Yükleniyor…' : 'Değiştir'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="small"
+              icon={<CameraOutlined />}
+              loading={uploadingPhoto}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              Bu kombinle fotoğrafını ekle
+            </Button>
+          )}
+          {!isAdmin && (
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) uploadWornPhoto(file)
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {/* Mesajlaşma: stilist ↔ kullanıcı tüm geçmiş, ağaç gibi alt alta */}
       {thread.length > 0 && (
         <div style={styles.chatBlock}>
@@ -1523,6 +1617,15 @@ const SuggestionCard: React.FC<SuggestionCardProps> = ({
           </Button>
         )}
       </div>
+
+      {s.wornPhotoBase64 && (
+        <Lightbox
+          open={photoEnlarged}
+          onClose={() => setPhotoEnlarged(false)}
+          src={s.wornPhotoBase64}
+          title="Tam görünüm 📸"
+        />
+      )}
     </div>
   )
 }
@@ -1967,6 +2070,42 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 0',
     marginBottom: 6,
     borderBottom: `1px solid ${COLORS.border}`,
+  },
+  wornPhotoBlock: {
+    padding: '8px 0',
+    marginBottom: 6,
+    borderBottom: `1px solid ${COLORS.border}`,
+  },
+  wornPhotoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  wornPhotoThumbBtn: {
+    padding: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+    lineHeight: 0,
+  },
+  wornPhotoThumb: {
+    width: 56,
+    height: 56,
+    objectFit: 'cover' as const,
+    borderRadius: 12,
+    display: 'block',
+  },
+  wornPhotoChangeBtn: {
+    border: 'none',
+    background: 'transparent',
+    color: COLORS.primary,
+    fontSize: 11,
+    padding: 0,
+    cursor: 'pointer',
+    marginTop: 2,
   },
   chatBlock: {
     marginTop: 10,

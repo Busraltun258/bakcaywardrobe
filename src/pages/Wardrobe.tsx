@@ -14,6 +14,7 @@ import {
   isBirthdayToday,
   openBirthdaySurprise,
 } from '../components/BirthdaySurprise'
+import RecentLooksRow from '../components/RecentLooksRow'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import { COLORS } from '../theme'
@@ -128,6 +129,9 @@ const Wardrobe: React.FC = () => {
             <span style={{ fontSize: 18 }}>✨</span>
           </button>
         )}
+
+        {/* Son giydiklerim — story tarzı dönen halkalar */}
+        <RecentLooksRow uid={user?.uid} />
 
         {/* Sezon filtresi — birden fazla seçilebilir, login/logout'ta korunur */}
         <div style={styles.seasonRow}>
