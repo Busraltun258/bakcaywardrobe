@@ -45,7 +45,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import DaySlider from '../components/DaySlider'
 import Lightbox from '../components/Lightbox'
-import RecentLooksRow from '../components/RecentLooksRow'
 import SmartImage from '../components/SmartImage'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
@@ -315,12 +314,6 @@ const AdminHome: React.FC = () => {
           </h1>
           <p style={styles.heroSub}>Gelen istekleri yanıtla, önerilerini yönet</p>
         </div>
-
-        {/* Kamuran'ın son giydikleri — story tarzı dönen halkalar */}
-        <RecentLooksRow
-          uid={profiles.find((p) => !p.isAdmin)?.id}
-          title={`${profileName(profiles.find((p) => !p.isAdmin)?.id ?? '')} son giydikleri 💫`}
-        />
 
         {/* Stats */}
         <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
@@ -700,6 +693,7 @@ const SuggestionsList: React.FC<{
   onEdit: (s: OutfitSuggestion) => void
   onDelete: (s: OutfitSuggestion) => void
 }> = ({ rows, clothesCache, profileName, advisorUid, loading, onPreview, onJumpToItem, onEdit, onDelete }) => {
+  const [wornPhotoPreview, setWornPhotoPreview] = useState<string | null>(null)
   if (loading) {
     return (
       <Card>
@@ -830,6 +824,16 @@ const SuggestionsList: React.FC<{
           )
         })}
       </div>
+      {s.wornPhotoBase64 && (
+        <button
+          type="button"
+          onClick={() => setWornPhotoPreview(s.wornPhotoBase64 ?? null)}
+          style={styles.wornPhotoPreviewBtn}
+        >
+          <img src={s.wornPhotoBase64} alt="" style={styles.wornPhotoPreviewImg} />
+          <span style={styles.wornPhotoPreviewLabel}>📸 Bu kombinle giydi</span>
+        </button>
+      )}
       <SuggestionThread s={s} who={who} advisorUid={advisorUid} profileName={profileName} />
     </>
   )
@@ -855,6 +859,7 @@ const SuggestionsList: React.FC<{
   })
 
   return (
+    <>
     <Row gutter={[12, 12]} align="stretch">
       {items.map((item) => {
         if (item.type === 'single') {
@@ -979,6 +984,13 @@ const SuggestionsList: React.FC<{
         )
       })}
     </Row>
+    <Lightbox
+      open={!!wornPhotoPreview}
+      onClose={() => setWornPhotoPreview(null)}
+      src={wornPhotoPreview ?? ''}
+      title="📸 Tam görünüm"
+    />
+    </>
   )
 }
 
@@ -1061,6 +1073,32 @@ const SuggestionThread: React.FC<{
 
 const styles: Record<string, React.CSSProperties> = {
   hero: { padding: '4px 0 16px' },
+  wornPhotoPreviewBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    padding: '6px 10px',
+    borderRadius: 10,
+    border: `1px solid ${COLORS.border}`,
+    background: 'rgba(124,140,255,0.06)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    width: '100%',
+    textAlign: 'left' as const,
+  },
+  wornPhotoPreviewImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    objectFit: 'cover' as const,
+    flexShrink: 0,
+  },
+  wornPhotoPreviewLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: COLORS.text,
+  },
   incompleteRow: {
     display: 'flex',
     alignItems: 'center',
