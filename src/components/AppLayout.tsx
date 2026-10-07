@@ -19,6 +19,7 @@ import { COLORS } from '../theme'
 import EnableNotifications from './EnableNotifications'
 import ForegroundNotif from './ForegroundNotif'
 import KamuranGreeting from './KamuranGreeting'
+import RelationshipTariff from './RelationshipTariff'
 import TripMode from './TripMode'
 
 interface Props {
@@ -140,6 +141,7 @@ const AppLayout: React.FC<Props> = ({ children }) => {
       </div>
 
       <TripMode />
+      <RelationshipTariff />
 
       <main className="fade-in">{children}</main>
 
