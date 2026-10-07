@@ -23,12 +23,13 @@ const ITEMS = [
   'İnsan gibi davranmak',
   'Değersizleştirmemek',
   'Kadın-erkek ilişkisini anlamak',
-  'Ezikletmemek, küçümsememek',
+  'Küçümsememek',
   'Saygısızlık etmemek',
   'Sözünü tutmak',
   'Tutarlı davranmak',
   'Olmadığı biri gibi görünmemek',
   'İlgisinin dışarıda olmaması',
+  'Kadının merakını, kıskançlığını yönetememesini anormal görmemek',
   'Yanlış anlaşılacak davranışlara yer vermemek',
 ]
 
