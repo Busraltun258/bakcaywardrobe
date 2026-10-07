@@ -1,4 +1,4 @@
-import { App, Button } from 'antd'
+import { App } from 'antd'
 import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore'
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -38,17 +38,11 @@ const RelationshipTariff: React.FC = () => {
   const { message } = App.useApp()
   const [tariff, setTariff] = useState<TariffState | null>(null)
   const [busy, setBusy] = useState(false)
-  const [minimized, setMinimized] = useState(false)
 
   useEffect(() => {
     if (!user) return
     return onSnapshot(TARIFF_REF(), (snap) => setTariff((snap.data() as TariffState) ?? {}))
   }, [user])
-
-  // Tarife kapanınca (Büşra kapatınca) küçültme durumunu sıfırla
-  useEffect(() => {
-    if (tariff?.active !== true) setMinimized(false)
-  }, [tariff?.active])
 
   if (!user || !tariff) return null
   const active = tariff.active === true
@@ -106,21 +100,14 @@ const RelationshipTariff: React.FC = () => {
   }
 
   // ===== KAMURAN (non-admin) =====
+  // Kapatma/küçültme yok — sadece Büşra "Tarifeyi kapat" diyerek kaldırabilir.
   if (!active) return null
-
-  // Küçültülmüşse: sadece küçük bir hatırlatma balonu (uygulamayı kullanabilsin)
-  if (minimized) {
-    return (
-      <button type="button" style={styles.pill} onClick={() => setMinimized(false)}>
-        💳 Ücret Tarifesi
-      </button>
-    )
-  }
 
   return (
     <div style={styles.wrap}>
       <div style={styles.card}>
-        <div style={{ fontSize: 34 }}>💳</div>
+        <div style={{ fontSize: 34 }}>💔</div>
+        <div style={styles.expired}>⏰ Deneme süreniz doldu</div>
         <div style={styles.title}>Ücret Tarifesi</div>
         <div style={styles.sub}>Bu ilişkinin bedeli, pazarlık konusu değil:</div>
         <div style={styles.list}>
@@ -131,9 +118,6 @@ const RelationshipTariff: React.FC = () => {
             </div>
           ))}
         </div>
-        <Button type="primary" block style={{ marginTop: 16 }} onClick={() => setMinimized(true)}>
-          Anladım
-        </Button>
       </div>
     </div>
   )
@@ -169,24 +153,6 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
     zIndex: 90,
   },
-  pill: {
-    position: 'fixed',
-    top: 'calc(env(safe-area-inset-top,0px) + 66px)',
-    left: 12,
-    right: 12,
-    margin: '0 auto',
-    maxWidth: 420,
-    zIndex: 4500,
-    padding: '10px 14px',
-    borderRadius: 999,
-    border: '1px solid rgba(124,140,255,0.4)',
-    background: 'rgba(124,140,255,0.18)',
-    color: COLORS.text,
-    fontWeight: 600,
-    fontSize: 13,
-    cursor: 'pointer',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-  },
   wrap: {
     position: 'fixed',
     inset: 0,
@@ -210,6 +176,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 20,
     textAlign: 'center',
     boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
+  },
+  expired: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: COLORS.error,
+    marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: '0.4px',
   },
   title: { fontSize: 20, fontWeight: 700, color: COLORS.text, marginTop: 6 },
   sub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 6, marginBottom: 4 },
